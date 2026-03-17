@@ -16,49 +16,51 @@
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0a0a0a; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
 
         #info-panel {
+            color: #e0e0e0;
             position: absolute;
             top: 16px;
             left: 16px;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(18, 18, 22, 0.92);
             border-radius: 12px;
             padding: 16px 20px;
             max-width: 340px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
             z-index: 10;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
         #info-panel h1 {
             font-size: 16px;
             font-weight: 700;
-            color: #1a1a1a;
+            color: #f0f0f0;
             margin-bottom: 4px;
         }
         #info-panel .subtitle {
             font-size: 12px;
-            color: #666;
+            color: #888;
             margin-bottom: 12px;
         }
         #tower-info {
             font-size: 13px;
-            color: #333;
+            color: #ccc;
             line-height: 1.5;
         }
         #tower-info .tower-name {
             font-weight: 600;
             font-size: 14px;
-            color: #c0392b;
+            color: #e74c3c;
         }
         #tower-info .stat {
             display: flex;
             justify-content: space-between;
             padding: 2px 0;
         }
-        #tower-info .stat .label { color: #888; }
-        #tower-info .stat .value { font-weight: 500; }
+        #tower-info .stat .label { color: #777; }
+        #tower-info .stat .value { font-weight: 500; color: #ddd; }
 
         #loading-indicator {
             display: none;
@@ -87,37 +89,40 @@
         }
         #token-overlay.hidden { display: none; }
         #token-box {
-            background: white;
+            background: #1a1a1e;
             border-radius: 14px;
             padding: 32px 36px;
             max-width: 440px;
             width: 90%;
-            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
             text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         #token-box h2 {
             font-size: 18px;
             margin-bottom: 6px;
-            color: #1a1a1a;
+            color: #f0f0f0;
         }
         #token-box p {
             font-size: 13px;
-            color: #666;
+            color: #999;
             margin-bottom: 16px;
             line-height: 1.5;
         }
-        #token-box a { color: #c0392b; }
+        #token-box a { color: #e74c3c; }
         #token-input {
             width: 100%;
             padding: 10px 14px;
-            border: 2px solid #ddd;
+            border: 2px solid #333;
             border-radius: 8px;
             font-size: 14px;
             font-family: monospace;
             margin-bottom: 12px;
             transition: border-color 0.2s;
+            background: #111;
+            color: #e0e0e0;
         }
-        #token-input:focus { outline: none; border-color: #c0392b; }
+        #token-input:focus { outline: none; border-color: #e74c3c; }
         #token-submit {
             background: #c0392b;
             color: white;
@@ -142,56 +147,38 @@
             padding: 10px 14px;
             font-family: inherit;
             font-size: 13px;
+            background: rgba(18, 18, 22, 0.92);
+            color: #ddd;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .mapboxgl-popup-tip {
+            border-top-color: rgba(18, 18, 22, 0.92) !important;
         }
 
-        #controls {
-            position: absolute;
-            bottom: 32px;
-            left: 16px;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 12px 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            z-index: 10;
-            font-size: 13px;
-            backdrop-filter: blur(8px);
-        }
-        #controls label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 6px;
-            color: #333;
-        }
-        #controls label:last-child { margin-bottom: 0; }
-        #controls input[type="range"] { width: 120px; }
-        #controls .range-value {
-            font-weight: 500;
-            min-width: 40px;
-            text-align: right;
-        }
         #footer {
             position: absolute;
             bottom: 8px;
             right: 120px;
             font-size: 11px;
-            color: #666;
+            color: #888;
             z-index: 10;
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(18, 18, 22, 0.85);
             padding: 4px 10px;
             border-radius: 6px;
             backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
         }
         #footer a {
-            color: #444;
+            color: #aaa;
             text-decoration: none;
         }
         #footer a:hover {
             text-decoration: underline;
+            color: #ddd;
         }
         #footer span {
             margin: 0 6px;
-            color: #ccc;
+            color: #555;
         }
     </style>
 </head>
@@ -205,14 +192,6 @@
             Click a tower to compute its viewshed.<br/>
             <small style="color: #999;">250 towers loaded from ICNF and OpenStreetMap data.</small>
         </div>
-    </div>
-
-    <div id="controls">
-        <label>
-            Max range
-            <input type="range" id="max-range" min="5" max="40" value="20" step="1" />
-            <span class="range-value" id="range-value">20 km</span>
-        </label>
     </div>
 
     <div id="loading-indicator">Computing viewshed...</div>
@@ -283,7 +262,7 @@
         // ——— MAP SETUP ———
         map = new mapboxgl.Map({
             container: 'map',
-            style: 'mapbox://styles/mapbox/outdoors-v12',
+            style: 'mapbox://styles/mapbox/dark-v11',
             center: [-8.0, 39.7],
             zoom: 7,
             pitch: 0,
@@ -486,13 +465,9 @@
         let activeTower = null;
         const loadingEl = document.getElementById('loading-indicator');
         const towerInfoEl = document.getElementById('tower-info');
-        const maxRangeInput = document.getElementById('max-range');
-        const rangeValueEl = document.getElementById('range-value');
+        const MAX_RANGE = 20;
         const RAY_COUNT = 360;
 
-        maxRangeInput.addEventListener('input', () => {
-            rangeValueEl.textContent = `${maxRangeInput.value} km`;
-        });
 
         // ——— MAP LOAD ———
         map.on('error', (e) => {
@@ -514,39 +489,39 @@
                 }
             }
 
-            // Enhance landcover (forests, grass, etc.) with stronger green tones
+            // Enhance landcover (forests, grass, etc.) for dark theme
             if (map.getLayer('landcover')) {
                 map.setPaintProperty('landcover', 'fill-color', [
                     'match', ['get', 'class'],
-                    'wood', '#6aad5f',
-                    'scrub', '#8aba7e',
-                    'grass', '#a3d194',
-                    'crop', '#d4e8c2',
-                    'snow', '#f0f0f0',
-                    '#e8e0d8'
+                    'wood', '#1a4a1a',
+                    'scrub', '#1e3d1e',
+                    'grass', '#1e3a16',
+                    'crop', '#1a2e14',
+                    'snow', '#2a2a2e',
+                    '#1a1a1e'
                 ]);
-                map.setPaintProperty('landcover', 'fill-opacity', 0.7);
+                map.setPaintProperty('landcover', 'fill-opacity', 0.8);
             }
 
             // Enhance national parks / protected areas
             if (map.getLayer('national-park')) {
-                map.setPaintProperty('national-park', 'fill-color', '#4a8c3f');
-                map.setPaintProperty('national-park', 'fill-opacity', 0.35);
+                map.setPaintProperty('national-park', 'fill-color', '#2d6b2d');
+                map.setPaintProperty('national-park', 'fill-opacity', 0.4);
             }
 
             // Enhance landuse (parks, forests)
             if (map.getLayer('landuse')) {
                 map.setPaintProperty('landuse', 'fill-color', [
                     'match', ['get', 'class'],
-                    'park', '#7bc26a',
-                    'airport', '#e8e0d8',
-                    'cemetery', '#e8e0d8',
-                    'glacier', '#f0f0f0',
-                    'hospital', '#e8e0d8',
-                    'pitch', '#c8dbb0',
-                    'sand', '#f0e4d0',
-                    'school', '#e8e0d8',
-                    '#e8e0d8'
+                    'park', '#1f4f1f',
+                    'airport', '#1a1a1e',
+                    'cemetery', '#1a1a1e',
+                    'glacier', '#2a2a2e',
+                    'hospital', '#1a1a1e',
+                    'pitch', '#1e3a1e',
+                    'sand', '#2a2518',
+                    'school', '#1a1a1e',
+                    '#1a1a1e'
                 ]);
             }
 
@@ -574,9 +549,9 @@
                         10, 7,
                         15, 12,
                     ],
-                    'circle-color': '#c0392b',
-                    'circle-stroke-color': '#fff',
-                    'circle-stroke-width': 2,
+                    'circle-color': '#e74c3c',
+                    'circle-stroke-color': 'rgba(231, 76, 60, 0.3)',
+                    'circle-stroke-width': 3,
                     'circle-opacity': 0.9,
                 },
             });
@@ -595,8 +570,8 @@
                     'text-max-width': 10,
                 },
                 paint: {
-                    'text-color': '#333',
-                    'text-halo-color': '#fff',
+                    'text-color': '#ccc',
+                    'text-halo-color': '#111',
                     'text-halo-width': 1.5,
                 },
             });
@@ -669,7 +644,7 @@
                 const tipoEstrutura = props.tipo_estrutura || '';
                 const distrito = props.distrito || '';
                 const concelho = props.concelho || '';
-                const maxRange = parseInt(maxRangeInput.value);
+                const maxRange = MAX_RANGE;
                 const numRays = RAY_COUNT;
 
                 // Update info panel
@@ -683,7 +658,6 @@
                     <div class="stat"><span class="label">Tower height</span><span class="value">${vpHeight} m</span></div>
                     ${tipoEstrutura ? `<div class="stat"><span class="label">Structure</span><span class="value">${tipoEstrutura}</span></div>` : ''}
                     ${fonteEnergia ? `<div class="stat"><span class="label">Energy</span><span class="value">${fonteEnergia}</span></div>` : ''}
-                    <div class="stat"><span class="label">Range</span><span class="value">${maxRange} km</span></div>
                     <div class="stat"><span class="label">Status</span><span class="value" id="status-text">Computing...</span></div>
                 `;
 
