@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Portugal Fire Lookout Towers — Viewshed Analysis</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+        #info-panel {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 16px 20px;
+            max-width: 340px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+            backdrop-filter: blur(8px);
+        }
+        #info-panel h1 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+        #info-panel .subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        #tower-info {
+            font-size: 13px;
+            color: #333;
+            line-height: 1.5;
+        }
+        #tower-info .tower-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #c0392b;
+        }
+        #tower-info .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+        }
+        #tower-info .stat .label { color: #888; }
+        #tower-info .stat .value { font-weight: 500; }
+
+        #loading-indicator {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 16px 28px;
+            border-radius: 10px;
+            font-size: 14px;
+            z-index: 20;
+        }
+        #loading-indicator.visible { display: block; }
+
+        #token-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            backdrop-filter: blur(4px);
+        }
+        #token-overlay.hidden { display: none; }
+        #token-box {
+            background: white;
+            border-radius: 14px;
+            padding: 32px 36px;
+            max-width: 440px;
+            width: 90%;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        #token-box h2 {
+            font-size: 18px;
+            margin-bottom: 6px;
+            color: #1a1a1a;
+        }
+        #token-box p {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        #token-box a { color: #c0392b; }
+        #token-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: monospace;
+            margin-bottom: 12px;
+            transition: border-color 0.2s;
+        }
+        #token-input:focus { outline: none; border-color: #c0392b; }
+        #token-submit {
+            background: #c0392b;
+            color: white;
+            border: none;
+            padding: 10px 28px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #token-submit:hover { background: #a93226; }
+        #token-error {
+            color: #c0392b;
+            font-size: 12px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .mapboxgl-popup-content {
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 32px;
+            left: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 12px 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+            font-size: 13px;
+            backdrop-filter: blur(8px);
+        }
+        #controls label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            color: #333;
+        }
+        #controls label:last-child { margin-bottom: 0; }
+        #controls input[type="range"] { width: 120px; }
+        #controls .range-value {
+            font-weight: 500;
+            min-width: 40px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div id="info-panel">
+        <h1>Postos de Vigia</h1>
+        <p class="subtitle">Portugal Fire Lookout Towers — Viewshed Analysis</p>
+        <div id="tower-info">
+            Click a tower to compute its viewshed.<br/>
+            <small style="color: #999;">250 towers loaded from ICNF and OpenStreetMap data.</small>
+        </div>
+    </div>
+
+    <div id="controls">
+        <label>
+            Max range
+            <input type="range" id="max-range" min="5" max="40" value="20" step="1" />
+            <span class="range-value" id="range-value">20 km</span>
+        </label>
+        <label>
+            Ray density
+            <input type="range" id="ray-count" min="180" max="720" value="360" step="36" />
+            <span class="range-value" id="ray-value">360</span>
+        </label>
+    </div>
+
+    <div id="loading-indicator">Computing viewshed...</div>
+
+    <div id="token-overlay">
+        <div id="token-box">
+            <h2>Mapbox Access Token</h2>
+            <p>
+                This app needs a Mapbox token to display the map and terrain data.<br/>
+                Get one free at <a href="https://account.mapbox.com/access-tokens/" target="_blank">mapbox.com</a>
+            </p>
+            <input type="text" id="token-input" placeholder="pk.eyJ1Ijo..." />
+            <br/>
+            <button id="token-submit">Launch Map</button>
+            <div id="token-error">Invalid token — please check and try again.</div>
+        </div>
+    </div>
+
+    <script>
+        // ——— EMBEDDED TOWER DATA ———
+        const TOWERS_DATA = {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3459938, 41.0253923]}, "properties": {"name": "21-07", "codigo_pv": "21-07", "distrito": "Aveiro", "concelho": "Castelo de Paiva", "freguesia": "Raiva", "elevation_m": 413.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.254705, 40.8852159]}, "properties": {"name": "22-01", "codigo_pv": "22-01", "distrito": "Aveiro", "concelho": "Arouca", "freguesia": "Moldes", "elevation_m": 1097.0, "viewpoint_height_m": 6.7, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2775967, 40.8437046]}, "properties": {"name": "22-02", "codigo_pv": "22-02", "distrito": "Aveiro", "concelho": "Vale de Cambra", "freguesia": "Arões", "elevation_m": 1044.0, "viewpoint_height_m": 6.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1169963, 40.9647082]}, "properties": {"name": "Posto de Vigia Corregos", "codigo_pv": "22-03", "distrito": "Aveiro", "concelho": "Arouca", "freguesia": "Alvarenga", "elevation_m": 872.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4339147, 40.8868652]}, "properties": {"name": "Posto de Vigia Pindelo", "codigo_pv": "22-04", "distrito": "Aveiro", "concelho": "Oliveira de Azeméis", "freguesia": "Pindelo", "elevation_m": 444.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.352642, 40.6675133]}, "properties": {"name": "47-02", "codigo_pv": "47-02", "distrito": "Aveiro", "concelho": "Serverdo Vouga", "freguesia": "Talhadas", "elevation_m": 498.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4722233, 40.7171014]}, "properties": {"name": "Posto de Vigia Senhora do Socorro", "codigo_pv": "47-03", "distrito": "Aveiro", "concelho": "Albergaria-a-Velha", "freguesia": "Albergaria-a-Velha", "elevation_m": 212.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3148125, 40.6088696]}, "properties": {"name": "Posto de Vigia Tareja", "codigo_pv": "47-04", "distrito": "Aveiro", "concelho": "Águeda", "freguesia": "Préstimo", "elevation_m": 494.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3362119, 40.5654416]}, "properties": {"name": "Posto de Vigia São Lourenço", "codigo_pv": "47-05", "distrito": "Aveiro", "concelho": "Águeda", "freguesia": "Agadão", "elevation_m": 362.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7837758, 38.2460743]}, "properties": {"name": "Posto de Vigia Mendro", "codigo_pv": "61-01", "distrito": "Beja", "concelho": "Vidigueira", "freguesia": "Vidigueira", "elevation_m": 420.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7618603, 37.7004036]}, "properties": {"name": "Posto de Vigia Alcaria Ruiva", "codigo_pv": "61-02", "distrito": "Beja", "concelho": "Mértola", "freguesia": "AlcariaRuiva", "elevation_m": 370.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2109656, 38.2063429]}, "properties": {"name": "62-01", "codigo_pv": "62-01", "distrito": "Beja", "concelho": "Moura", "freguesia": "Amareleja", "elevation_m": 233.0, "viewpoint_height_m": 7.1, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0261446, 38.0881578]}, "properties": {"name": "62-02", "codigo_pv": "62-02", "distrito": "Beja", "concelho": "Moura", "freguesia": "Restauração", "elevation_m": 397.0, "viewpoint_height_m": 8.3, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4250035, 37.7370387]}, "properties": {"name": "Posto de Vigia Abutreira", "codigo_pv": "63-03", "distrito": "Beja", "concelho": "Odemira", "freguesia": "Vale de Santiago", "elevation_m": 258.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5565756, 37.6354821]}, "properties": {"name": "Posto de Vigia Gavião", "codigo_pv": "63-04", "distrito": "Beja", "concelho": "Odemira", "freguesia": "Odemira (Sta.ia)", "elevation_m": 280.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6242408, 37.4469453]}, "properties": {"name": "Posto de Vigia Algares", "codigo_pv": "63-05", "distrito": "Beja", "concelho": "Odemira", "freguesia": "S.Teotónio", "elevation_m": 455.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.68481, 37.7070054]}, "properties": {"name": "63-06", "codigo_pv": "63-06", "distrito": "Beja", "concelho": "Odemira", "freguesia": "S. Luís", "elevation_m": 315.0, "viewpoint_height_m": 5.4, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.386343, 37.6152798]}, "properties": {"name": "63-07", "codigo_pv": "63-07", "distrito": "Beja", "concelho": "Odemira", "freguesia": "S.tinhodas Amoreiras", "elevation_m": 391.0, "viewpoint_height_m": 7.6, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2715548, 37.4326067]}, "properties": {"name": "Posto de Vigia Cegonhita", "codigo_pv": "69-01", "distrito": "Beja", "concelho": "Ourique", "freguesia": "Santana da Serra", "elevation_m": 377.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0801258, 37.3707213]}, "properties": {"name": "Posto de Vigia Mú", "codigo_pv": "69-02", "distrito": "Beja", "concelho": "Almodôvar", "freguesia": "S.Barnabé", "elevation_m": 577.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7213777, 37.5062493]}, "properties": {"name": "Posto de Vigia Portela", "codigo_pv": "P4", "distrito": "Beja", "concelho": "Odemira", "freguesia": "S.Teotónio", "elevation_m": 213.0, "viewpoint_height_m": 8.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1509834, 41.7154231]}, "properties": {"name": "Posto de Vigia Pedra Bela", "codigo_pv": "0-82", "distrito": "Braga", "concelho": "Terras deBouro", "freguesia": "Vilarda Veiga", "elevation_m": 846.0, "viewpoint_height_m": 9.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1398594, 41.8062289]}, "properties": {"name": "Posto de Vigia Calvos", "codigo_pv": "0-84", "distrito": "Braga", "concelho": "Terras deBouro", "freguesia": "Campo doGerês", "elevation_m": 929.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0250277, 41.4900673]}, "properties": {"name": "Posto de Vigia Senhora da Ourada", "codigo_pv": "26-01", "distrito": "Braga", "concelho": "Cabeceiras de Basto", "freguesia": "Alvite", "elevation_m": 795.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0630346, 41.3705029]}, "properties": {"name": "Posto de Vigia Senhora do Covelo", "codigo_pv": "26-02", "distrito": "Braga", "concelho": "Celoricode Basto", "freguesia": "Carvalho", "elevation_m": 677.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2244967, 41.503213]}, "properties": {"name": "Posto de Vigia Santa Marinha", "codigo_pv": "26-03", "distrito": "Braga", "concelho": "Fafe", "freguesia": "Freitas", "elevation_m": 597.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7488247, 41.8310036]}, "properties": {"name": "Posto de Vigia Pedra Alçada", "codigo_pv": "28-02", "distrito": "Braga", "concelho": "Vila Verde", "freguesia": "Codeceda", "elevation_m": 727.0, "viewpoint_height_m": 9.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0435629, 41.6388907]}, "properties": {"name": "Posto de Vigia Cabreira", "codigo_pv": "29-01", "distrito": "Braga", "concelho": "Vieira do Minho", "freguesia": "Rivães", "elevation_m": 1260.0, "viewpoint_height_m": 9.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2464096, 41.6279515]}, "properties": {"name": "Posto de Vigia São Mamede", "codigo_pv": "29-02", "distrito": "Braga", "concelho": "Póvoa deLanhoso", "freguesia": "Rendufinho", "elevation_m": 743.0, "viewpoint_height_m": 0.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6761992, 41.5864918]}, "properties": {"name": "Posto de Vigia São Gonçalo", "codigo_pv": "29-03", "distrito": "Braga", "concelho": "Barcelos", "freguesia": "Tamel(Sta.Leocádia)", "elevation_m": 488.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.394706, 41.5142544]}, "properties": {"name": "Posto de Vigia Santa Marta", "codigo_pv": "29-04", "distrito": "Braga", "concelho": "Braga", "freguesia": "Esporões", "elevation_m": 561.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.7571435, 41.9286763]}, "properties": {"name": "12-01", "codigo_pv": "12-01", "distrito": "Bragança", "concelho": "Bragança", "freguesia": "França", "elevation_m": 1155.0, "viewpoint_height_m": 5.3, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.5911284, 41.8492517]}, "properties": {"name": "12-02", "codigo_pv": "12-02", "distrito": "Bragança", "concelho": "Bragança", "freguesia": "Deilão", "elevation_m": 957.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.8662299, 41.7462498]}, "properties": {"name": "Posto de Vigia de Nogueira", "codigo_pv": "12-03", "distrito": "Bragança", "concelho": "Bragança", "freguesia": "Zóio", "elevation_m": 1218.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0038964, 41.9147838]}, "properties": {"name": "12-04", "codigo_pv": "12-04", "distrito": "Bragança", "concelho": "Vinhais", "freguesia": "Travanca", "elevation_m": 1271.0, "viewpoint_height_m": 4.7, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0948171, 41.7671366]}, "properties": {"name": "12-05", "codigo_pv": "12-05", "distrito": "Bragança", "concelho": "Vinhais", "freguesia": "Vale de Janeiro", "elevation_m": 770.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.9468163, 41.4717645]}, "properties": {"name": "15-01", "codigo_pv": "15-01", "distrito": "Bragança", "concelho": "Macedo de Cavaleiros", "freguesia": "Grijóde Vale Benfeito", "elevation_m": 1172.0, "viewpoint_height_m": 5.7, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.7309914, 41.3179791]}, "properties": {"name": "Posto de Vigia Mogadouro", "codigo_pv": "16-01", "distrito": "Bragança", "concelho": "Mogadouro", "freguesia": "Mogadouro", "elevation_m": 918.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.5203179, 41.5788758]}, "properties": {"name": "Posto de Vigia Vimioso", "codigo_pv": "16-02", "distrito": "Bragança", "concelho": "Vimioso", "freguesia": "Vimioso", "elevation_m": 771.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.2545299, 41.6329229]}, "properties": {"name": "Posto de Vigia Miranda do Douro", "codigo_pv": "16-03", "distrito": "Bragança", "concelho": "Miranda do Douro", "freguesia": "Constantim", "elevation_m": 893.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.3082575, 41.2593786]}, "properties": {"name": "Posto de Vigia Samorinha", "codigo_pv": "17-01", "distrito": "Bragança", "concelho": "CarrazedadeAnsiães", "freguesia": "Amedo", "elevation_m": 897.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0181457, 41.1668493]}, "properties": {"name": "Posto de Vigia Serra do Reboredo", "codigo_pv": "17-02", "distrito": "Bragança", "concelho": "Torre deMoncorvo", "freguesia": "Felgueiras", "elevation_m": 909.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.4300901, 40.3540335]}, "properties": {"name": "Posto de Vigia Sarzedo", "codigo_pv": "32-01", "distrito": "Castelo Branco", "concelho": "Covilhã", "freguesia": "Sarzedo", "elevation_m": 1008.0, "viewpoint_height_m": 6.3, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5013813, 40.1057888]}, "properties": {"name": "Posto de Vigia Alcongosta", "codigo_pv": "32-02", "distrito": "Castelo Branco", "concelho": "Fundão", "freguesia": "Alcongosta", "elevation_m": 1162.0, "viewpoint_height_m": 6.3, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5363899, 40.2909354]}, "properties": {"name": "32-03", "codigo_pv": "32-03", "distrito": "Castelo Branco", "concelho": "Covilhã", "freguesia": "Covilhã(S.tinho)", "elevation_m": 1300.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.3583542, 40.3412824]}, "properties": {"name": "Posto de Vigia Serra da Esperança", "codigo_pv": "32-05", "distrito": "Castelo Branco", "concelho": "Belmonte", "freguesia": "Belmonte", "elevation_m": 715.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2399633, 40.2053411]}, "properties": {"name": "Posto de Vigia Santa Marta", "codigo_pv": "32-06", "distrito": "Castelo Branco", "concelho": "Penamacor", "freguesia": "Penamacor", "elevation_m": 804.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7108909, 40.0278309]}, "properties": {"name": "Posto de Vigia Zibreiro", "codigo_pv": "36-01", "distrito": "Castelo Branco", "concelho": "Fundão", "freguesia": "Bogas de Baixo", "elevation_m": 1094.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8306911, 39.9468275]}, "properties": {"name": "Posto de Vigia Casinhas", "codigo_pv": "36-02", "distrito": "Castelo Branco", "concelho": "Oleiros", "freguesia": "Estreito", "elevation_m": 860.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9484112, 39.9433015]}, "properties": {"name": "36-03", "codigo_pv": "36-03", "distrito": "Castelo Branco", "concelho": "Oleiros", "freguesia": "Oleiros", "elevation_m": 963.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0466339, 39.9089672]}, "properties": {"name": "36-04", "codigo_pv": "36-04", "distrito": "Castelo Branco", "concelho": "Sertã", "freguesia": "PedrógãoPequeno", "elevation_m": 893.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2268753, 39.7991084]}, "properties": {"name": "Posto de Vigia Casal Madalena", "codigo_pv": "36-05", "distrito": "Castelo Branco", "concelho": "Sertã", "freguesia": "Bonjardim", "elevation_m": 486.0, "viewpoint_height_m": 8.6, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9298845, 39.8456071]}, "properties": {"name": "36-06", "codigo_pv": "36-06", "distrito": "Castelo Branco", "concelho": "Sertã", "freguesia": "Ermida", "elevation_m": 1060.0, "viewpoint_height_m": 5.2, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9969807, 39.7504183]}, "properties": {"name": "Posto de Vigia Vergão", "codigo_pv": "36-07", "distrito": "Castelo Branco", "concelho": "Proença-a-Nova", "freguesia": "Proença-a-Nova", "elevation_m": 659.0, "viewpoint_height_m": 6.1, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7749193, 39.7739155]}, "properties": {"name": "Posto de Vigia Chão Galego", "codigo_pv": "36-08", "distrito": "Castelo Branco", "concelho": "Proença-a-Nova", "freguesia": "Montes da Senhora", "elevation_m": 618.0, "viewpoint_height_m": 4.1, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5808452, 39.7681234]}, "properties": {"name": "Posto de Vigia Olelas", "codigo_pv": "39-01", "distrito": "Castelo Branco", "concelho": "Castelo Branco", "freguesia": "Retaxo", "elevation_m": 482.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2498783, 39.9328349]}, "properties": {"name": "Posto de Vigia São Gens", "codigo_pv": "39-02", "distrito": "Castelo Branco", "concelho": "Idanha-a-Nova", "freguesia": "Idanha-a-Nova", "elevation_m": 506.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.97334, 40.0263413]}, "properties": {"name": "Posto de Vigia Vaca", "codigo_pv": "39-03", "distrito": "Castelo Branco", "concelho": "Idanha-a-Nova", "freguesia": "Penha Garcia", "elevation_m": 828.0, "viewpoint_height_m": 2.9, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2878939, 39.7279023]}, "properties": {"name": "Posto de Vigia Castelo", "codigo_pv": "39-04", "distrito": "Castelo Branco", "concelho": "Castelo Branco", "freguesia": "Monforte da Beira", "elevation_m": 457.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0760385, 40.0880034]}, "properties": {"name": "Posto de Vigia Portucel-Salvador", "codigo_pv": "39-05", "distrito": "Castelo Branco", "concelho": "Penamacor", "freguesia": "Penamacor", "elevation_m": 768.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7005239, 39.6780458]}, "properties": {"name": "Posto de Vigia Penedo Gordo", "codigo_pv": "39-06", "distrito": "Castelo Branco", "concelho": "Vila Velha de Rodão", "freguesia": "Vila Velha de Rodão", "elevation_m": 560.0, "viewpoint_height_m": 2.8, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7745881, 40.1460485]}, "properties": {"name": "Posto de Vigia Serra do Chiqueiro", "codigo_pv": "32-04", "distrito": "Coimbra", "concelho": "Pampilhosa da Serra", "freguesia": "Unhais-o-Velho", "elevation_m": 1086.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0019548, 40.1144708]}, "properties": {"name": "41-01", "codigo_pv": "41-01", "distrito": "Coimbra", "concelho": "Pampilhosa da Serra", "freguesia": "Pessegueiro", "elevation_m": 1027.0, "viewpoint_height_m": 6.7, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9605791, 40.204628]}, "properties": {"name": "41-02", "codigo_pv": "41-02", "distrito": "Coimbra", "concelho": "Arganil", "freguesia": "Teixeira", "elevation_m": 966.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.968203, 40.0194485]}, "properties": {"name": "Posto de Vigia Vale Serrão", "codigo_pv": "41-03", "distrito": "Coimbra", "concelho": "Pampilhosa da Serra", "freguesia": "Pampilhosa da Serra", "elevation_m": 794.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8181625, 40.215577]}, "properties": {"name": "41-04", "codigo_pv": "41-04", "distrito": "Coimbra", "concelho": "Arganil", "freguesia": "Piódão", "elevation_m": 1341.0, "viewpoint_height_m": 4.5, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0628713, 40.1673138]}, "properties": {"name": "Posto de Vigia Rabadão", "codigo_pv": "41-05", "distrito": "Coimbra", "concelho": "Arganil", "freguesia": "Celavisa", "elevation_m": 780.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9040785, 40.2540391]}, "properties": {"name": "Posto de Vigia Carvalhal", "codigo_pv": "41-06", "distrito": "Coimbra", "concelho": "Arganil", "freguesia": "Vila Cova de Alva", "elevation_m": 775.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8458438, 40.3442465]}, "properties": {"name": "Posto de Vigia Catraia São Paio", "codigo_pv": "41-07", "distrito": "Coimbra", "concelho": "Oliveira do Hospital", "freguesia": "Oliveira do Hospital", "elevation_m": 575.0, "viewpoint_height_m": 20.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3054891, 40.3038601]}, "properties": {"name": "41-08", "codigo_pv": "41-08", "distrito": "Coimbra", "concelho": "Penacova", "freguesia": "Sazes do lorvão", "elevation_m": 470.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2026672, 40.230563]}, "properties": {"name": "41-09", "codigo_pv": "41-09", "distrito": "Coimbra", "concelho": "Vila Nova de Poiares", "freguesia": "Lavegadas", "elevation_m": 432.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3083267, 40.2241988]}, "properties": {"name": "Posto de Vigia Terreiro Santo António", "codigo_pv": "41-10", "distrito": "Coimbra", "concelho": "Vila Nova de Poiares", "freguesia": "Arrifana", "elevation_m": 458.0, "viewpoint_height_m": 10.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2754575, 40.048991]}, "properties": {"name": "Posto de Vigia Chão do Bardo", "codigo_pv": "42-02", "distrito": "Coimbra", "concelho": "Miranda do Corvo", "freguesia": "Vila Nova", "elevation_m": 941.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2976314, 40.0068295]}, "properties": {"name": "Posto de Vigia Malhadizes", "codigo_pv": "42-05", "distrito": "Coimbra", "concelho": "Penela", "freguesia": "Espinhal", "elevation_m": 863.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3491042, 40.1662402]}, "properties": {"name": "Posto de Vigia Chães", "codigo_pv": "42-06", "distrito": "Coimbra", "concelho": "Miranda do Corvo", "freguesia": "Semide", "elevation_m": 413.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8542743, 40.1958051]}, "properties": {"name": "Posto de Vigia Serra da Boa Viagem", "codigo_pv": "43-01", "distrito": "Coimbra", "concelho": "Figueira da Foz", "freguesia": "Quiaios", "elevation_m": 214.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5638838, 40.0812336]}, "properties": {"name": "Posto de Vigia Cabeça Gorda", "codigo_pv": "43-02", "distrito": "Coimbra", "concelho": "Soure", "freguesia": "Soure", "elevation_m": 154.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7777029, 40.1657004]}, "properties": {"name": "Posto de Vigia Serra de São Bento", "codigo_pv": "43-03", "distrito": "Coimbra", "concelho": "Figueira da Foz", "freguesia": "Maiorca", "elevation_m": 126.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7602663, 40.5048617]}, "properties": {"name": "Posto de Vigia Areão", "codigo_pv": "43-04", "distrito": "Coimbra", "concelho": "Mira", "freguesia": "Seixo", "elevation_m": 28.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6225454, 40.308909]}, "properties": {"name": "Posto de Vigia São Gião", "codigo_pv": "43-05", "distrito": "Coimbra", "concelho": "Cantanhede", "freguesia": "Cantanhede", "elevation_m": 122.0, "viewpoint_height_m": 25.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7903896, 40.3666774]}, "properties": {"name": "Posto de Vigia Palheiros da Tocha", "codigo_pv": "43-06", "distrito": "Coimbra", "concelho": "Cantanhede", "freguesia": "Tocha", "elevation_m": 40.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.524126, 37.3834659]}, "properties": {"name": "63-08", "codigo_pv": "63-08", "distrito": "Faro", "concelho": "Monchique", "freguesia": "Monchique", "elevation_m": 512.0, "viewpoint_height_m": 5.2, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7389492, 37.2435575]}, "properties": {"name": "Posto de Vigia Alcaria do Cume", "codigo_pv": "81-01", "distrito": "Faro", "concelho": "Tavira", "freguesia": "Bispo", "elevation_m": 525.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5056952, 37.356298]}, "properties": {"name": "Posto de Vigia Terras da Ordem", "codigo_pv": "81-02", "distrito": "Faro", "concelho": "Castroim", "freguesia": "Odeleite", "elevation_m": 169.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6946774, 37.3554871]}, "properties": {"name": "Posto de Vigia Vaqueiros", "codigo_pv": "81-03", "distrito": "Faro", "concelho": "Alcoutim", "freguesia": "Vaqueiros", "elevation_m": 320.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.61348, 37.3086951]}, "properties": {"name": "Posto de Vigia Madrinha", "codigo_pv": "82-01", "distrito": "Faro", "concelho": "Monchique", "freguesia": "Monchique", "elevation_m": 803.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5317443, 37.307668]}, "properties": {"name": "Posto de Vigia de Picota", "codigo_pv": "82-02", "distrito": "Faro", "concelho": "Monchique", "freguesia": "Monchique", "elevation_m": 773.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7796194, 37.2188408]}, "properties": {"name": "Posto de Vigia Poldra", "codigo_pv": "82-03", "distrito": "Faro", "concelho": "Aljezur", "freguesia": "Bordeira", "elevation_m": 249.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1038707, 37.3082808]}, "properties": {"name": "83-01", "codigo_pv": "83-01", "distrito": "Faro", "concelho": "Loulé", "freguesia": "Salir", "elevation_m": null, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9822134, 37.2702444]}, "properties": {"name": "Posto de Vigia Zebro", "codigo_pv": "83-02", "distrito": "Faro", "concelho": "Loulé", "freguesia": "Salir", "elevation_m": 542.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9123963, 37.2120811]}, "properties": {"name": "Posto de Vigia Menta", "codigo_pv": "83-03", "distrito": "Faro", "concelho": "São Brás de Alportel", "freguesia": "São Brás de Alportel", "elevation_m": 545.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8101657, 37.3270227]}, "properties": {"name": "P-1", "codigo_pv": "P-1", "distrito": "Faro", "concelho": "Aljezur", "freguesia": "Aljezur", "elevation_m": 112.0, "viewpoint_height_m": 6.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8204802, 37.261622]}, "properties": {"name": "P-2", "codigo_pv": "P-2", "distrito": "Faro", "concelho": "Aljezur", "freguesia": "Aljezur", "elevation_m": 178.0, "viewpoint_height_m": 12.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8791025, 37.1384398]}, "properties": {"name": "P-3", "codigo_pv": "P-3", "distrito": "Faro", "concelho": "Vila do Bispo", "freguesia": "Vila do Bispo", "elevation_m": 135.0, "viewpoint_height_m": 10.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6939411, 40.3468469]}, "properties": {"name": "Posto de Vigia Castelo", "codigo_pv": "33-02", "distrito": "Guarda", "concelho": "Seia", "freguesia": "Cabeça", "elevation_m": 1076.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6983173, 40.2645381]}, "properties": {"name": "Posto de Vigia Rebolo da Galga", "codigo_pv": "33-03", "distrito": "Guarda", "concelho": "Seia", "freguesia": "Alcovo da Serra", "elevation_m": 1130.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5171222, 40.6469881]}, "properties": {"name": "Posto de Vigia Comborço", "codigo_pv": "33-05", "distrito": "Guarda", "concelho": "Fornos de Algodres", "freguesia": "Algodres", "elevation_m": 706.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.4551036, 40.4308554]}, "properties": {"name": "35-01", "codigo_pv": "35-01", "distrito": "Guarda", "concelho": "Manteigas", "freguesia": "Sameiro", "elevation_m": 1240.0, "viewpoint_height_m": 6.8, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5119804, 40.4101613]}, "properties": {"name": "Posto de Vigia São Lourenço", "codigo_pv": "35-02", "distrito": "Guarda", "concelho": "Manteigas", "freguesia": "Manteigas (Sta.ia)", "elevation_m": 1170.0, "viewpoint_height_m": 8.1, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0217298, 40.2910383]}, "properties": {"name": "35-03", "codigo_pv": "35-03", "distrito": "Guarda", "concelho": "Sabugal", "freguesia": "Quadrazais", "elevation_m": 1070.0, "viewpoint_height_m": 6.6, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.9133268, 40.3257189]}, "properties": {"name": "Posto de Vigia Pedra do Homem", "codigo_pv": "35-04", "distrito": "Guarda", "concelho": "Sabugal", "freguesia": "Souto", "elevation_m": 1135.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5704582, 40.4063175]}, "properties": {"name": "Posto de Vigia Penhas Douradas", "codigo_pv": "35-05", "distrito": "Guarda", "concelho": "Gouveia", "freguesia": "Mangualde da Serra", "elevation_m": 1450.0, "viewpoint_height_m": 7.7, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2854865, 40.5222395]}, "properties": {"name": "Posto de Vigia Pedra do Vento", "codigo_pv": "35-06", "distrito": "Guarda", "concelho": "Guarda", "freguesia": "Vale de Estrela", "elevation_m": 1052.0, "viewpoint_height_m": 6.5, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.1324963, 40.5896524]}, "properties": {"name": "Posto de Vigia Jarmelo", "codigo_pv": "35-07", "distrito": "Guarda", "concelho": "Guarda", "freguesia": "Jarmelo (S. Pedro)", "elevation_m": 943.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.9879037, 40.5928788]}, "properties": {"name": "Posto de Vigia Alto Leomil", "codigo_pv": "35-08", "distrito": "Guarda", "concelho": "Almeida", "freguesia": "Freixo", "elevation_m": 815.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.4235012, 40.7722595]}, "properties": {"name": "Posto de Vigia Pisco", "codigo_pv": "37-01", "distrito": "Guarda", "concelho": "Trancoso", "freguesia": "Trancoso (Sta.ia)", "elevation_m": 989.0, "viewpoint_height_m": 6.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.264975, 40.9930858]}, "properties": {"name": "Posto de Vigia Santa Columba", "codigo_pv": "37-02", "distrito": "Guarda", "concelho": "Mêda", "freguesia": "Mêda", "elevation_m": 792.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-6.9915761, 40.8640189]}, "properties": {"name": "Posto de Vigia Marofa", "codigo_pv": "37-03", "distrito": "Guarda", "concelho": "Figueira de Castelo Rodrigo", "freguesia": "Castelo Rodrigo", "elevation_m": 976.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.0609617, 40.7776745]}, "properties": {"name": "Posto de Vigia Pinhel", "codigo_pv": "37-04", "distrito": "Guarda", "concelho": "Pinhel", "freguesia": "Pinhel", "elevation_m": 655.0, "viewpoint_height_m": 15.2, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2893545, 40.7426253]}, "properties": {"name": "Posto de Vigia Broca", "codigo_pv": "37-05", "distrito": "Guarda", "concelho": "Trancoso", "freguesia": "Vilares", "elevation_m": 814.0, "viewpoint_height_m": 4.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5916552, 40.8259503]}, "properties": {"name": "45-06", "codigo_pv": "45-06", "distrito": "Guarda", "concelho": "Aguiar da Beira", "freguesia": "Aguiar da Beira", "elevation_m": 853.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1623918, 40.077229]}, "properties": {"name": "42-01", "codigo_pv": "42-01", "distrito": "Leiria", "concelho": "Castanheirade Pêra", "freguesia": "Coentral", "elevation_m": 1190.0, "viewpoint_height_m": 6.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2783245, 39.9095522]}, "properties": {"name": "Posto de Vigia Alto do Pião", "codigo_pv": "42-03", "distrito": "Leiria", "concelho": "Figueiródos Vinhos", "freguesia": "Figueiródos Vinhos", "elevation_m": 542.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2374884, 39.9950047]}, "properties": {"name": "Posto de Vigia Ortiga", "codigo_pv": "42-04", "distrito": "Leiria", "concelho": "Castanheira de Pêra", "freguesia": "Castanheira de Pêra", "elevation_m": 779.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4108825, 39.8288335]}, "properties": {"name": "42-07", "codigo_pv": "42-07", "distrito": "Leiria", "concelho": "Alvaiázere", "freguesia": "Alvaiázere", "elevation_m": 615.0, "viewpoint_height_m": 6.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1630034, 39.9957216]}, "properties": {"name": "Posto de Vigia Muro", "codigo_pv": "42-08", "distrito": "Leiria", "concelho": "Pedrógrão Grande", "freguesia": "Pedrógrão Grande", "elevation_m": 725.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.9317974, 39.9121978]}, "properties": {"name": "44-01", "codigo_pv": "44-01", "distrito": "Leiria", "concelho": "Leiria", "freguesia": "Coimbrão", "elevation_m": 80.0, "viewpoint_height_m": 13.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.9709717, 39.8312084]}, "properties": {"name": "44-02", "codigo_pv": "44-02", "distrito": "Leiria", "concelho": "inha Grande", "freguesia": "inha Grande", "elevation_m": 81.0, "viewpoint_height_m": 13.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.0037508, 39.7656089]}, "properties": {"name": "44-03", "codigo_pv": "44-03", "distrito": "Leiria", "concelho": "inha Grande", "freguesia": "inha Grande", "elevation_m": 103.0, "viewpoint_height_m": 13.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.0009945, 39.7152574]}, "properties": {"name": "44-04", "codigo_pv": "44-04", "distrito": "Leiria", "concelho": "Alcobaça", "freguesia": "Pataias", "elevation_m": 145.0, "viewpoint_height_m": 13.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7585701, 39.6723464]}, "properties": {"name": "Posto de Vigia Maunça", "codigo_pv": "44-05", "distrito": "Leiria", "concelho": "Batalha", "freguesia": "Reguengo do Fetal", "elevation_m": 435.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8866285, 39.9583252]}, "properties": {"name": "Posto de Vigia Crasta Alta", "codigo_pv": "44-06", "distrito": "Leiria", "concelho": "Pombal", "freguesia": "Guia", "elevation_m": 86.0, "viewpoint_height_m": 10.2, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5402765, 39.9204865]}, "properties": {"name": "Posto de Vigia Sicó", "codigo_pv": "44-07", "distrito": "Leiria", "concelho": "Pombal", "freguesia": "Pombal", "elevation_m": 553.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.0521538, 39.5929798]}, "properties": {"name": "51-01", "codigo_pv": "51-01", "distrito": "Leiria", "concelho": "Nazaré", "freguesia": "Nazaré", "elevation_m": 152.0, "viewpoint_height_m": 8.6, "rede": "Primária", "tipo_estrutura": "Madeira"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8511188, 39.5702053]}, "properties": {"name": "P-01", "codigo_pv": "P-01", "distrito": "Leiria", "concelho": "Porto de Mós", "freguesia": "Serro Ventoso", "elevation_m": 542.0, "viewpoint_height_m": 4.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8876027, 39.4692883]}, "properties": {"name": "P-02", "codigo_pv": "P-02", "distrito": "Leiria", "concelho": "Porto de Mós", "freguesia": "Arrimal", "elevation_m": 524.0, "viewpoint_height_m": 4.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.054404, 39.1883634]}, "properties": {"name": "Posto de Vigia Montejunto", "codigo_pv": "52-01", "distrito": "Lisboa", "concelho": "Cadaval", "freguesia": "Lamas", "elevation_m": 573.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.1850711, 39.1096554]}, "properties": {"name": "52-02", "codigo_pv": "52-02", "distrito": "Lisboa", "concelho": "Torres Vedras", "freguesia": "Monte Redondo", "elevation_m": 312.0, "viewpoint_height_m": 6.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.9990584, 39.1083491]}, "properties": {"name": "52-03", "codigo_pv": "52-03", "distrito": "Lisboa", "concelho": "Alenquer", "freguesia": "Ota", "elevation_m": 156.0, "viewpoint_height_m": 5.8, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.2947769, 38.9469672]}, "properties": {"name": "Posto de Vigia Tapada de Mafra", "codigo_pv": "52-04", "distrito": "Lisboa", "concelho": "Mafra", "freguesia": "Mafra", "elevation_m": 350.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.4005912, 38.7358697]}, "properties": {"name": "54-01", "codigo_pv": "54-01", "distrito": "Lisboa", "concelho": "Cascais", "freguesia": "Alcabideche", "elevation_m": 155.0, "viewpoint_height_m": 6.8, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.4181944, 38.8164025]}, "properties": {"name": "54-03", "codigo_pv": "54-03", "distrito": "Lisboa", "concelho": "Sintra", "freguesia": "Sintra (S.tinho)", "elevation_m": 127.0, "viewpoint_height_m": 7.6, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.1938763, 38.8983012]}, "properties": {"name": "Posto de Vigia Cabeço Montachique", "codigo_pv": "54-04", "distrito": "Lisboa", "concelho": "Loures", "freguesia": "Lousa", "elevation_m": 408.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.2594214, 38.7979551]}, "properties": {"name": "54-05", "codigo_pv": "54-05", "distrito": "Lisboa", "concelho": "Sintra", "freguesia": "Belas", "elevation_m": 270.0, "viewpoint_height_m": 4.1, "rede": "Primária", "tipo_estrutura": "Madeira"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.4365611, 38.7641358]}, "properties": {"name": "54-06", "codigo_pv": "54-06", "distrito": "Lisboa", "concelho": "Cascais", "freguesia": "Alcabideche", "elevation_m": 400.0, "viewpoint_height_m": 7.8, "rede": "Primária", "tipo_estrutura": "Madeira"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1870847, 39.0771223]}, "properties": {"name": "Posto de Vigia Montargil", "codigo_pv": "64-02", "distrito": "Portalegre", "concelho": "Ponte de Sôr", "freguesia": "Montargil", "elevation_m": 236.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9320606, 39.4664412]}, "properties": {"name": "Posto de Vigia Gavião", "codigo_pv": "64-03", "distrito": "Portalegre", "concelho": "Gavião", "freguesia": "Gavião", "elevation_m": 280.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6302154, 39.575444]}, "properties": {"name": "Posto de Vigia São Miguel Nisa", "codigo_pv": "65-01", "distrito": "Portalegre", "concelho": "Nisa", "freguesia": "S. Simão", "elevation_m": 460.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.3602023, 39.3134594]}, "properties": {"name": "Posto de Vigia São Mamede", "codigo_pv": "65-02", "distrito": "Portalegre", "concelho": "vão", "freguesia": "S. Salvador da Aramenha", "elevation_m": 1080.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6223895, 39.1888735]}, "properties": {"name": "Posto de Vigia Alter Pedroso", "codigo_pv": "65-03", "distrito": "Portalegre", "concelho": "Alter do Chão", "freguesia": "Alter do Chão", "elevation_m": 413.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9554586, 41.2627887]}, "properties": {"name": "21", "codigo_pv": "21", "distrito": "Porto", "concelho": "Amarante", "freguesia": "Ansiães", "elevation_m": 960.0, "viewpoint_height_m": 6.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1370545, 41.25908]}, "properties": {"name": "21-01", "codigo_pv": "21-01", "distrito": "Porto", "concelho": "Amarante", "freguesia": "Fregim", "elevation_m": 531.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1372276, 41.1165116]}, "properties": {"name": "Posto de Vigia Penha Longa", "codigo_pv": "21-03", "distrito": "Porto", "concelho": "co de Canaveses", "freguesia": "Penha Longa", "elevation_m": 663.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3417946, 41.0686072]}, "properties": {"name": "Posto de Vigia Boneca", "codigo_pv": "21-04", "distrito": "Porto", "concelho": "Penafiel", "freguesia": "Sebolido", "elevation_m": 518.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3908729, 41.2000833]}, "properties": {"name": "21-05", "codigo_pv": "21-05", "distrito": "Porto", "concelho": "Paredes", "freguesia": "Vandoma", "elevation_m": 510.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2962951, 41.3095254]}, "properties": {"name": "Posto de Vigia Santa Águeda", "codigo_pv": "21-06", "distrito": "Porto", "concelho": "Lousada", "freguesia": "Sousela", "elevation_m": 577.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5945521, 41.3197588]}, "properties": {"name": "Posto de Vigia São Gens", "codigo_pv": "29-05", "distrito": "Porto", "concelho": "Trofa", "freguesia": "Trofa (Santiago do Bougado)", "elevation_m": 205.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4937187, 41.1715965]}, "properties": {"name": "Valongo-2", "codigo_pv": "Valongo-2", "distrito": "Porto", "concelho": "Valongo", "freguesia": "Valongo", "elevation_m": 367.0, "viewpoint_height_m": 5.5, "rede": "Secundária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9745836, 39.613822]}, "properties": {"name": "Posto de Vigia Bando dos Santos", "codigo_pv": "36-09", "distrito": "Santarém", "concelho": "Mação", "freguesia": "Mação", "elevation_m": 641.0, "viewpoint_height_m": 9.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8258761, 39.5703073]}, "properties": {"name": "Posto de Vigia Castelo Velho", "codigo_pv": "36-10", "distrito": "Santarém", "concelho": "Mação", "freguesia": "Envedos", "elevation_m": 434.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5106047, 39.0206652]}, "properties": {"name": "53-01", "codigo_pv": "53-01", "distrito": "Santarém", "concelho": "Coruche", "freguesia": "Coruche", "elevation_m": 104.0, "viewpoint_height_m": 31.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.649121, 38.9686037]}, "properties": {"name": "Posto de Vigia Cascavel", "codigo_pv": "53-02", "distrito": "Santarém", "concelho": "Coruche", "freguesia": "Fajarda", "elevation_m": 81.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5189065, 38.8406489]}, "properties": {"name": "Posto de Vigia São Torcato", "codigo_pv": "53-03", "distrito": "Santarém", "concelho": "Coruche", "freguesia": "Branca", "elevation_m": 134.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7998857, 38.822966]}, "properties": {"name": "Posto de Vigia Cabeço da Aranha", "codigo_pv": "53-04", "distrito": "Santarém", "concelho": "Benavente", "freguesia": "Samora Correia", "elevation_m": 46.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.9570967, 39.3732293]}, "properties": {"name": "Posto de Vigia Conde", "codigo_pv": "55-01", "distrito": "Santarém", "concelho": "Rio Maior", "freguesia": "Rio Maior", "elevation_m": 323.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5865074, 39.1416804]}, "properties": {"name": "Posto de Vigia Almeirim", "codigo_pv": "55-02", "distrito": "Santarém", "concelho": "Almeirim", "freguesia": "Almeirim", "elevation_m": 170.0, "viewpoint_height_m": 12.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4175634, 39.3357331]}, "properties": {"name": "Posto de Vigia Figueiras", "codigo_pv": "55-03", "distrito": "Santarém", "concelho": "Chamusca", "freguesia": "Ulme", "elevation_m": 198.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5222731, 39.6442579]}, "properties": {"name": "Posto de Vigia Alburitel", "codigo_pv": "56-01", "distrito": "Santarém", "concelho": "Ourém", "freguesia": "Alburitel", "elevation_m": 254.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1306273, 39.5568623]}, "properties": {"name": "Posto de Vigia Alcaravela", "codigo_pv": "56-02", "distrito": "Santarém", "concelho": "Sardoal", "freguesia": "Alcaravela", "elevation_m": 334.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6328943, 39.7346716]}, "properties": {"name": "Posto de Vigia Cabeço de Óbidos", "codigo_pv": "56-03", "distrito": "Santarém", "concelho": "Ourém", "freguesia": "Matas", "elevation_m": 374.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3762796, 39.5040779]}, "properties": {"name": "Posto de Vigia Chorafome", "codigo_pv": "56-04", "distrito": "Santarém", "concelho": "Tomar", "freguesia": "Asseiceira", "elevation_m": 207.0, "viewpoint_height_m": 12.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2930571, 39.5306554]}, "properties": {"name": "Posto de Vigia Medroa", "codigo_pv": "56-05", "distrito": "Santarém", "concelho": "Abrantes", "freguesia": "Aldeia do Mato", "elevation_m": 284.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2454198, 39.7007849]}, "properties": {"name": "Posto de Vigia Pombeira", "codigo_pv": "56-06", "distrito": "Santarém", "concelho": "Ferreira do Zêzere", "freguesia": "Ferreira do Zêzere", "elevation_m": 428.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.221584, 39.3417132]}, "properties": {"name": "Posto de Vigia Sanheira", "codigo_pv": "56-07", "distrito": "Santarém", "concelho": "Abrantes", "freguesia": "Bemposta", "elevation_m": 206.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3005954, 39.5997966]}, "properties": {"name": "Posto de Vigia Serra de Tomar", "codigo_pv": "56-08", "distrito": "Santarém", "concelho": "Tomar", "freguesia": "Serra", "elevation_m": 319.0, "viewpoint_height_m": 16.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0112604, 39.3669786]}, "properties": {"name": "Posto de Vigia Vale de Água", "codigo_pv": "64-01", "distrito": "Santarém", "concelho": "Abrantes", "freguesia": "S. Facundo", "elevation_m": 284.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6378068, 39.5354457]}, "properties": {"name": "P-03", "codigo_pv": "P-03", "distrito": "Santarém", "concelho": "Alcanena", "freguesia": "Minde", "elevation_m": 672.0, "viewpoint_height_m": 4.0, "rede": "Secundária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.9387438, 38.5336006]}, "properties": {"name": "Posto de Vigia São Luís", "codigo_pv": "57-01", "distrito": "Setúbal", "concelho": "Palmela", "freguesia": "Palmela", "elevation_m": 392.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Madeira"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.1858855, 38.5654745]}, "properties": {"name": "57-02", "codigo_pv": "57-02", "distrito": "Setúbal", "concelho": "Almada", "freguesia": "Charneca da Caparica", "elevation_m": 110.0, "viewpoint_height_m": 4.3, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.1270325, 38.5340326]}, "properties": {"name": "Posto de Vigia Monte Apostiça", "codigo_pv": "57-03", "distrito": "Setúbal", "concelho": "Sesimbra", "freguesia": "Sesimbra (Castelo)", "elevation_m": 30.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6958757, 37.9810376]}, "properties": {"name": "Posto de Vigia Convento", "codigo_pv": "63-01", "distrito": "Setúbal", "concelho": "Santiago do Cacém", "freguesia": "Santiago do Cacém", "elevation_m": 282.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7126096, 37.7900862]}, "properties": {"name": "Posto de Vigia Cercal", "codigo_pv": "63-02", "distrito": "Setúbal", "concelho": "Santiago do Cacém", "freguesia": "Cercal", "elevation_m": 335.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.468036, 38.340977]}, "properties": {"name": "Posto de Vigia Maceira", "codigo_pv": "70-01", "distrito": "Setúbal", "concelho": "Alcácer do Sal", "freguesia": "Alcácer do Sal (Santiago)", "elevation_m": 118.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6456593, 38.169291]}, "properties": {"name": "Posto de Vigia da Atalaia", "codigo_pv": "70-02", "distrito": "Setúbal", "concelho": "Grândola", "freguesia": "Melides", "elevation_m": 326.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7482024, 38.2649635]}, "properties": {"name": "Posto de Vigia Pinheiro da Cruz", "codigo_pv": "70-03", "distrito": "Setúbal", "concelho": "Grândola", "freguesia": "Carvalhal", "elevation_m": 82.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Madeira"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4958677, 38.105939]}, "properties": {"name": "Posto de Vigia Caveira", "codigo_pv": "70-04", "distrito": "Setúbal", "concelho": "Grândola", "freguesia": "Grândola", "elevation_m": 179.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1956182, 41.8137156]}, "properties": {"name": "0-72", "codigo_pv": "0-72", "distrito": "Viana do Castelo", "concelho": "Ponte da Barca", "freguesia": "Lindoso", "elevation_m": 1358.0, "viewpoint_height_m": 6.8, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5575746, 41.9825575]}, "properties": {"name": "Posto de Vigia Boalhosa", "codigo_pv": "25-01", "distrito": "Viana do Castelo", "concelho": "Valença", "freguesia": "Taião", "elevation_m": 782.0, "viewpoint_height_m": 3.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3030205, 42.005741]}, "properties": {"name": "25-02", "codigo_pv": "25-02", "distrito": "Viana do Castelo", "concelho": "Monção", "freguesia": "Riba de Mouro", "elevation_m": 1112.0, "viewpoint_height_m": 6.4, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2176835, 42.0666087]}, "properties": {"name": "Posto de Vigia Cabeça de Pito", "codigo_pv": "25-03", "distrito": "Viana do Castelo", "concelho": "Melgaço", "freguesia": "Cubalhão", "elevation_m": 1161.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5182171, 41.8674285]}, "properties": {"name": "25-04", "codigo_pv": "25-04", "distrito": "Viana do Castelo", "concelho": "Paredes de Coura", "freguesia": "Bico", "elevation_m": 882.0, "viewpoint_height_m": 6.8, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7146167, 41.921694]}, "properties": {"name": "Posto de Vigia Pena", "codigo_pv": "25-05", "distrito": "Viana do Castelo", "concelho": "Vila Nova de Cerveira", "freguesia": "Loivo", "elevation_m": 637.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.7487766, 41.8310226]}, "properties": {"name": "25-06", "codigo_pv": "25-06", "distrito": "Viana do Castelo", "concelho": "Caminha", "freguesia": "Dem", "elevation_m": 723.0, "viewpoint_height_m": 9.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6878988, 41.800101]}, "properties": {"name": "28", "codigo_pv": "28", "distrito": "Viana do Castelo", "concelho": "Viana do Castelo", "freguesia": "Montaria", "elevation_m": 797.0, "viewpoint_height_m": 14.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5986183, 41.713688]}, "properties": {"name": "Posto de Vigia Nora", "codigo_pv": "28-01", "distrito": "Viana do Castelo", "concelho": "Ponte de Lima", "freguesia": "Rebordões (Santaia)", "elevation_m": 562.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4592789, 41.7288344]}, "properties": {"name": "Posto de Vigia Oural", "codigo_pv": "28-03", "distrito": "Viana do Castelo", "concelho": "Arcos de Valdevez", "freguesia": "Soajo", "elevation_m": 722.0, "viewpoint_height_m": 4.8, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0142238, 41.7130872]}, "properties": {"name": "0-83", "codigo_pv": "0-83", "distrito": "Vila Real", "concelho": "Montalegre", "freguesia": "Cabril", "elevation_m": 711.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9212166, 41.8259091]}, "properties": {"name": "Posto de Vigia Mourela", "codigo_pv": "0-93", "distrito": "Vila Real", "concelho": "Montalegre", "freguesia": "Covelães", "elevation_m": 1256.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8483809, 41.6938807]}, "properties": {"name": "11-01", "codigo_pv": "11-01", "distrito": "Vila Real", "concelho": "Montalegre", "freguesia": "Viade de Baixo", "elevation_m": 1277.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6471712, 41.7327318]}, "properties": {"name": "11-02", "codigo_pv": "11-02", "distrito": "Vila Real", "concelho": "Boticas", "freguesia": "Bobadela", "elevation_m": 1153.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7541948, 41.645489]}, "properties": {"name": "Posto de Vigia Lasanho", "codigo_pv": "11-03", "distrito": "Vila Real", "concelho": "Ribeira de Pena", "freguesia": "Canedo", "elevation_m": 1075.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8101622, 41.6027251]}, "properties": {"name": "Posto de Vigia Alto dos Púcaros", "codigo_pv": "11-04", "distrito": "Vila Real", "concelho": "Boticas", "freguesia": "Covas do Barroso", "elevation_m": 750.0, "viewpoint_height_m": 2.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8197061, 41.7949325]}, "properties": {"name": "Posto de Vigia Ourigo", "codigo_pv": "11-05", "distrito": "Vila Real", "concelho": "Montalegre", "freguesia": "Montalegre", "elevation_m": 1279.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9179691, 41.6240418]}, "properties": {"name": "Posto de Vigia Alto da Corneta", "codigo_pv": "11-06", "distrito": "Vila Real", "concelho": "Montalegre", "freguesia": "Salto", "elevation_m": 1111.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.2987589, 41.8435103]}, "properties": {"name": "Posto de Vigia Argemil", "codigo_pv": "13-01", "distrito": "Vila Real", "concelho": "Chaves", "freguesia": "Travancas", "elevation_m": 959.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.43787, 41.6975707]}, "properties": {"name": "13-02", "codigo_pv": "13-02", "distrito": "Vila Real", "concelho": "Chaves", "freguesia": "Vilar de Nantes", "elevation_m": 919.0, "viewpoint_height_m": 7.5, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.3328665, 41.4709075]}, "properties": {"name": "Posto de Vigia Santa Comba", "codigo_pv": "13-03", "distrito": "Vila Real", "concelho": "Valpaços", "freguesia": "S. Pedro de Veiga de Lila", "elevation_m": 1014.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.3143904, 41.6813803]}, "properties": {"name": "13-04", "codigo_pv": "13-04", "distrito": "Vila Real", "concelho": "Valpaços", "freguesia": "Vilarandelo", "elevation_m": 669.0, "viewpoint_height_m": 6.7, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6887813, 41.5492202]}, "properties": {"name": "18-01", "codigo_pv": "18-01", "distrito": "Vila Real", "concelho": "Vila Pouca de Aguiar", "freguesia": "Pensalvos", "elevation_m": 1198.0, "viewpoint_height_m": 5.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6464613, 41.422932]}, "properties": {"name": "Posto de Vigia Cabreiro", "codigo_pv": "18-02", "distrito": "Vila Real", "concelho": "Vila Pouca de Aguiar", "freguesia": "Telões", "elevation_m": 1128.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5261704, 41.5260661]}, "properties": {"name": "Posto de Vigia Sevivas", "codigo_pv": "18-03", "distrito": "Vila Real", "concelho": "Vila Pouca de Aguiar", "freguesia": "Tresminas", "elevation_m": 1049.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5617829, 41.3991535]}, "properties": {"name": "18-04", "codigo_pv": "18-04", "distrito": "Vila Real", "concelho": "Murça", "freguesia": "Carva", "elevation_m": 1030.0, "viewpoint_height_m": 6.6, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.4558957, 41.4315625]}, "properties": {"name": "Posto de Vigia Murça", "codigo_pv": "18-05", "distrito": "Vila Real", "concelho": "Murça", "freguesia": "Valongo de Milhais", "elevation_m": 734.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.672759, 41.2346137]}, "properties": {"name": "Posto de Vigia Senhora da Guia", "codigo_pv": "19-01", "distrito": "Vila Real", "concelho": "Vila Real", "freguesia": "Abaças", "elevation_m": 728.0, "viewpoint_height_m": 2.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6895857, 41.3746235]}, "properties": {"name": "Posto de Vigia São Bento", "codigo_pv": "19-02", "distrito": "Vila Real", "concelho": "Vila Real", "freguesia": "S. Tomédo Castelo", "elevation_m": 785.0, "viewpoint_height_m": 1.5, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6005001, 41.205252]}, "properties": {"name": "Posto de Vigia São Domingos", "codigo_pv": "19-03", "distrito": "Vila Real", "concelho": "Sabrosa", "freguesia": "Paços", "elevation_m": 862.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8959929, 41.2676123]}, "properties": {"name": "Posto de Vigia Marão", "codigo_pv": "19-04", "distrito": "Vila Real", "concelho": "Vila Real", "freguesia": "Campeã", "elevation_m": 1349.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.4363992, 41.3092145]}, "properties": {"name": "Posto de Vigia Burneira", "codigo_pv": "19-05", "distrito": "Vila Real", "concelho": "Alijó", "freguesia": "Alijó", "elevation_m": 815.0, "viewpoint_height_m": 3.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8609505, 41.4950369]}, "properties": {"name": "Posto de Vigia Calvo", "codigo_pv": "27-01", "distrito": "Vila Real", "concelho": "Ribeira de Pena", "freguesia": "Ribeira de Pena (Salvador)", "elevation_m": 785.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9156505, 41.4165325]}, "properties": {"name": "Posto de Vigia Senhora da Graça", "codigo_pv": "27-02", "distrito": "Vila Real", "concelho": "Mondim de Basto", "freguesia": "Vilar de Ferreiros", "elevation_m": 985.0, "viewpoint_height_m": 18.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9338502, 41.3393059]}, "properties": {"name": "Posto de Vigia Campanhó", "codigo_pv": "27-03", "distrito": "Vila Real", "concelho": "Mondim de Basto", "freguesia": "Campanhó", "elevation_m": 704.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8040003, 41.5582427]}, "properties": {"name": "Posto de Vigia Bezerral", "codigo_pv": "27-04", "distrito": "Vila Real", "concelho": "Ribeira de Pena", "freguesia": "Santainha", "elevation_m": 705.0, "viewpoint_height_m": 9.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8063228, 41.0087988]}, "properties": {"name": "Posto de Vigia Santa Helena", "codigo_pv": "14-01", "distrito": "Viseu", "concelho": "Tarouca", "freguesia": "Tarouca", "elevation_m": 1090.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8631851, 41.1004366]}, "properties": {"name": "Posto de Vigia de Meadas", "codigo_pv": "14-02", "distrito": "Viseu", "concelho": "Lamego", "freguesia": "Penude", "elevation_m": 1111.0, "viewpoint_height_m": 4.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6815232, 41.0443803]}, "properties": {"name": "Posto de Vigia Armamar", "codigo_pv": "14-03", "distrito": "Viseu", "concelho": "Armamar", "freguesia": "Cimbres", "elevation_m": 955.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.4327058, 41.0372786]}, "properties": {"name": "Posto de Vigia Penela da Beira", "codigo_pv": "14-04", "distrito": "Viseu", "concelho": "Penedono", "freguesia": "Penela da Beira", "elevation_m": 985.0, "viewpoint_height_m": 5.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9831715, 41.0731879]}, "properties": {"name": "Posto de Vigia Seculca", "codigo_pv": "21-02", "distrito": "Viseu", "concelho": "Resende", "freguesia": "S. Romão de Aregos", "elevation_m": 891.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6573495, 40.595902]}, "properties": {"name": "Posto de Vigia Poisadas", "codigo_pv": "33-04", "distrito": "Viseu", "concelho": "Mangualde", "freguesia": "Abrunhosa-a-Velha", "elevation_m": 766.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9209093, 40.6983529]}, "properties": {"name": "Posto de Vigia Monte de Santa Luzía", "codigo_pv": "45-01", "distrito": "Viseu", "concelho": "Viseu", "freguesia": "Campo", "elevation_m": 638.0, "viewpoint_height_m": 20.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.8387581, 40.8044132]}, "properties": {"name": "45-02", "codigo_pv": "45-02", "distrito": "Viseu", "concelho": "Viseu", "freguesia": "Cota", "elevation_m": 880.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7815376, 40.7988864]}, "properties": {"name": "45-03", "codigo_pv": "45-03", "distrito": "Viseu", "concelho": "Viseu", "freguesia": "Cota", "elevation_m": 825.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.7176838, 40.7586608]}, "properties": {"name": "Posto de Vigia Monte do Facho", "codigo_pv": "45-04", "distrito": "Viseu", "concelho": "Satão", "freguesia": "Mioma", "elevation_m": 738.0, "viewpoint_height_m": 16.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.9508125, 40.4563098]}, "properties": {"name": "Posto de Vigia Fiais da Telha", "codigo_pv": "45-05", "distrito": "Viseu", "concelho": "Carregal do Sal", "freguesia": "Oliveira do Conde", "elevation_m": 313.0, "viewpoint_height_m": 16.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2434145, 40.6172775]}, "properties": {"name": "46-01", "codigo_pv": "46-01", "distrito": "Viseu", "concelho": "Oliveira de Frades", "freguesia": "Arca", "elevation_m": 723.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2878934, 40.7020999]}, "properties": {"name": "Posto de Vigia Cruzes", "codigo_pv": "46-02", "distrito": "Viseu", "concelho": "Oliveira de Frades", "freguesia": "Arcozelo das Maias", "elevation_m": 805.0, "viewpoint_height_m": 6.4, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1235707, 40.6899404]}, "properties": {"name": "Posto de Vigia Penoita", "codigo_pv": "46-03", "distrito": "Viseu", "concelho": "Vouzela", "freguesia": "Ventosa", "elevation_m": 881.0, "viewpoint_height_m": 6.4, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1761616, 40.5807166]}, "properties": {"name": "46-04", "codigo_pv": "46-04", "distrito": "Viseu", "concelho": "Tondela", "freguesia": "Guardão", "elevation_m": 1054.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1913337, 40.4450881]}, "properties": {"name": "Posto de Vigia Chão Miúdo", "codigo_pv": "46-05", "distrito": "Viseu", "concelho": "Mortágua", "freguesia": "Sobral", "elevation_m": 405.0, "viewpoint_height_m": 12.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0826216, 40.4821896]}, "properties": {"name": "Posto de Vigia Senhora da Esperança", "codigo_pv": "46-06", "distrito": "Viseu", "concelho": "Tondela", "freguesia": "Vila Nova da Rainha", "elevation_m": 373.0, "viewpoint_height_m": 16.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1991417, 40.787323]}, "properties": {"name": "Posto de Vigia Gravia", "codigo_pv": "46-07", "distrito": "Viseu", "concelho": "São Pedro do Sul", "freguesia": "Valadares", "elevation_m": 891.0, "viewpoint_height_m": 6.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0606649, 40.8755511]}, "properties": {"name": "46-08", "codigo_pv": "46-08", "distrito": "Viseu", "concelho": "São Pedro do Sul", "freguesia": "S.tinho das Moitas", "elevation_m": 1050.0, "viewpoint_height_m": 7.0, "rede": "Primária", "tipo_estrutura": "Alvenaria"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.24193, 40.5092275]}, "properties": {"name": "Posto de Vigia Cabeço do Boi", "codigo_pv": "46-09", "distrito": "Viseu", "concelho": "Mortágua", "freguesia": "Sobral", "elevation_m": 768.0, "viewpoint_height_m": 12.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.3269565, 40.4907038]}, "properties": {"name": "Posto de Vigia Moinho do Pisco", "codigo_pv": "47-06", "distrito": "Viseu", "concelho": "Mortágua", "freguesia": "Espinho", "elevation_m": 475.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.2771371, 38.81087]}, "properties": {"name": "Posto de Vigia Godeal", "codigo_pv": "66-01", "distrito": "Évora", "concelho": "Montemor-o-Novo", "freguesia": "Lavre", "elevation_m": 222.0, "viewpoint_height_m": 8.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.1946585, 38.4039056]}, "properties": {"name": "Posto de Vigia Senhora da Esperança", "codigo_pv": "66-02", "distrito": "Évora", "concelho": "Viana do Alentejo", "freguesia": "Alcáçovas", "elevation_m": 282.0, "viewpoint_height_m": 10.0, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5841266, 38.7393346]}, "properties": {"name": "68-01", "codigo_pv": "68-01", "distrito": "Évora", "concelho": "Estremoz", "freguesia": "Glória", "elevation_m": 652.0, "viewpoint_height_m": 8.2, "rede": "Primária", "tipo_estrutura": "Metálica"}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.2906864, 39.3752539]}, "properties": {"name": "Posto de Vigia Vale Grande", "codigo_pv": "51-02", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 58.0, "viewpoint_height_m": 15.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.6376735, 39.5354347]}, "properties": {"name": "Posto de Vigia Aire", "codigo_pv": "P03", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 678.0, "viewpoint_height_m": 4.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.5193908, 38.0768721]}, "properties": {"name": "Moinho da Atalaia", "codigo_pv": "M. ATALAIA", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 206.0, "viewpoint_height_m": 8.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-9.4726725, 38.7779046]}, "properties": {"name": "Posto de Vigia Cabeço do Outeiro", "codigo_pv": "54-02", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 326.0, "viewpoint_height_m": 15.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.6123868, 38.7457762]}, "properties": {"name": "Posto de Vigia Serra de Ossa 1", "codigo_pv": "S.OSSA-1", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 428.0, "viewpoint_height_m": 15.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8789485, 37.1384153]}, "properties": {"name": "Posto de Vigia Monteiros", "codigo_pv": "P3", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 138.0, "viewpoint_height_m": 10.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-7.5393104, 40.4724552]}, "properties": {"name": "Posto de Vigia Santinha", "codigo_pv": "33-01", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 1595.0, "viewpoint_height_m": 15.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.0142531, 41.7130761]}, "properties": {"name": "Posto de Vigia São Lourenço", "codigo_pv": "0-92", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 772.0, "viewpoint_height_m": 8.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8100848, 37.3269914]}, "properties": {"name": "Posto de Vigia Mariares", "codigo_pv": "P1", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 118.0, "viewpoint_height_m": 6.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.4954969, 41.174802]}, "properties": {"name": "Posto de Vigia Santa Justa", "codigo_pv": "VALONGO-2", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 366.0, "viewpoint_height_m": 6.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8510559, 39.5701199]}, "properties": {"name": "Posto de Vigia Penedos Negros", "codigo_pv": "P02", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 547.0, "viewpoint_height_m": 8.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.9675746, 39.2059128]}, "properties": {"name": "Posto de Vigia Alcoentre", "codigo_pv": "55-05", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 149.0, "viewpoint_height_m": 15.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8203799, 37.2616003]}, "properties": {"name": "Posto de Vigia Valinhos", "codigo_pv": "P2", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 182.0, "viewpoint_height_m": 12.0, "rede": "", "tipo_estrutura": ""}}, {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-8.8875993, 39.4692163]}, "properties": {"name": "Posto de Vigia Vale de Ventos", "codigo_pv": "P01", "distrito": "", "concelho": "", "freguesia": "", "elevation_m": 483.0, "viewpoint_height_m": 4.0, "rede": "", "tipo_estrutura": ""}}]};
+
+        // ——— TOKEN HANDLING ———
+        const STORAGE_KEY = 'firewatch_mapbox_token';
+        const DEFAULT_TOKEN = 'pk.eyJ1Ijoiam9hb3BtZ29uY2FsdmVzIiwiYSI6ImNtbXV1bnZsYjI1bngycHNicTZrc2UxYXYifQ.kdn7b3F_X3t-Pbk4BBYzuA';
+        let MAPBOX_TOKEN = '';
+        let TERRAIN_TILE_URL = '';
+        const TILE_SIZE = 512;
+        const TILE_ZOOM = 12;
+
+        function initApp(token) {
+            MAPBOX_TOKEN = token;
+            TERRAIN_TILE_URL = `https://api.mapbox.com/v4/mapbox.mapbox-terrain-dem-v1/{z}/{x}/{y}.pngraw?access_token=${MAPBOX_TOKEN}`;
+            mapboxgl.accessToken = MAPBOX_TOKEN;
+
+            // Hide overlay
+            document.getElementById('token-overlay').classList.add('hidden');
+
+            // Save for next visit
+            localStorage.setItem(STORAGE_KEY, token);
+
+            // Boot the map
+            setupMap();
+        }
+
+        // Check localStorage first, then fall back to default
+        const savedToken = localStorage.getItem(STORAGE_KEY) || DEFAULT_TOKEN;
+        if (savedToken && savedToken.startsWith('pk.')) {
+            initApp(savedToken);
+        } else {
+            // Wait for user input
+            document.getElementById('token-submit').addEventListener('click', () => {
+                const val = document.getElementById('token-input').value.trim();
+                if (!val.startsWith('pk.')) {
+                    document.getElementById('token-error').style.display = 'block';
+                    return;
+                }
+                initApp(val);
+            });
+            document.getElementById('token-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') document.getElementById('token-submit').click();
+            });
+        }
+
+        let map;
+        function setupMap() {
+
+        // ——— MAP SETUP ———
+        map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/outdoors-v12',
+            center: [-8.0, 39.7],
+            zoom: 7,
+            pitch: 0,
+            maxZoom: 18,
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+        map.addControl(new mapboxgl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+
+        // ——— ELEVATION TILE CACHE ———
+        const tileCache = new Map();
+
+        function lon2tile(lon, zoom) {
+            return Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
+        }
+        function lat2tile(lat, zoom) {
+            return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
+        }
+
+        // Convert lon/lat to pixel position within a tile
+        function lonLatToTilePixel(lon, lat, zoom) {
+            const n = Math.pow(2, zoom);
+            const xTile = (lon + 180) / 360 * n;
+            const yTile = (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
+            const tileX = Math.floor(xTile);
+            const tileY = Math.floor(yTile);
+            const pixelX = Math.floor((xTile - tileX) * TILE_SIZE);
+            const pixelY = Math.floor((yTile - tileY) * TILE_SIZE);
+            return { tileX, tileY, pixelX, pixelY };
+        }
+
+        async function loadTile(tileX, tileY, zoom) {
+            const key = `${zoom}/${tileX}/${tileY}`;
+            if (tileCache.has(key)) return tileCache.get(key);
+
+            const url = TERRAIN_TILE_URL
+                .replace('{z}', zoom)
+                .replace('{x}', tileX)
+                .replace('{y}', tileY);
+
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = TILE_SIZE;
+                    canvas.height = TILE_SIZE;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    const imageData = ctx.getImageData(0, 0, TILE_SIZE, TILE_SIZE);
+                    tileCache.set(key, imageData);
+                    resolve(imageData);
+                };
+                img.onerror = () => {
+                    // Return null for ocean/missing tiles
+                    tileCache.set(key, null);
+                    resolve(null);
+                };
+                img.src = url;
+            });
+        }
+
+        // Decode Mapbox Terrain-DEM v1 (Mapbox terrain encoding)
+        function decodeElevation(r, g, b) {
+            return -10000 + (r * 256 * 256 + g * 256 + b) * 0.1;
+        }
+
+        async function getElevation(lon, lat) {
+            const { tileX, tileY, pixelX, pixelY } = lonLatToTilePixel(lon, lat, TILE_ZOOM);
+            const imageData = await loadTile(tileX, tileY, TILE_ZOOM);
+            if (!imageData) return 0;
+
+            const px = Math.min(pixelX, TILE_SIZE - 1);
+            const py = Math.min(pixelY, TILE_SIZE - 1);
+            const idx = (py * TILE_SIZE + px) * 4;
+            const r = imageData.data[idx];
+            const g = imageData.data[idx + 1];
+            const b = imageData.data[idx + 2];
+            return decodeElevation(r, g, b);
+        }
+
+        // ——— VIEWSHED COMPUTATION ———
+        // Haversine distance in meters
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        // Synchronous elevation lookup (only call after tiles are cached)
+        function getElevationSync(lon, lat) {
+            const { tileX, tileY, pixelX, pixelY } = lonLatToTilePixel(lon, lat, TILE_ZOOM);
+            const key = `${TILE_ZOOM}/${tileX}/${tileY}`;
+            const imageData = tileCache.get(key);
+            if (!imageData) return 0;
+
+            const px = Math.min(pixelX, TILE_SIZE - 1);
+            const py = Math.min(pixelY, TILE_SIZE - 1);
+            const idx = (py * TILE_SIZE + px) * 4;
+            return decodeElevation(imageData.data[idx], imageData.data[idx + 1], imageData.data[idx + 2]);
+        }
+
+        // Compute viewshed boundary polygon from a tower position
+        async function computeViewshed(towerLon, towerLat, towerElevation, viewpointHeight, maxRangeKm, numRays) {
+            const observerEle = towerElevation + viewpointHeight;
+            const maxRange = maxRangeKm * 1000; // meters
+            const STEP_M = 150; // sample every 150m along each ray
+            const totalSteps = Math.ceil(maxRange / STEP_M);
+            const cosLat = Math.cos(towerLat * Math.PI / 180);
+            const boundaryPoints = [];
+
+            // Prefetch all tiles we'll need
+            const tilesToLoad = new Set();
+            for (let i = 0; i < numRays; i++) {
+                const radians = (360 / numRays) * i * Math.PI / 180;
+                const cosR = Math.cos(radians);
+                const sinR = Math.sin(radians);
+                for (let step = 1; step <= totalSteps; step++) {
+                    const dist = step * STEP_M;
+                    const sampleLat = towerLat + (dist * cosR) / 111320;
+                    const sampleLon = towerLon + (dist * sinR) / (111320 * cosLat);
+                    const { tileX, tileY } = lonLatToTilePixel(sampleLon, sampleLat, TILE_ZOOM);
+                    tilesToLoad.add(`${tileX},${tileY}`);
+                }
+            }
+
+            // Batch load unique tiles
+            const loadPromises = [];
+            for (const key of tilesToLoad) {
+                const [tx, ty] = key.split(',').map(Number);
+                loadPromises.push(loadTile(tx, ty, TILE_ZOOM));
+            }
+            await Promise.all(loadPromises);
+
+            // Cast rays in all directions (synchronous — all tiles cached)
+            for (let i = 0; i < numRays; i++) {
+                const radians = (360 / numRays) * i * Math.PI / 180;
+                const cosR = Math.cos(radians);
+                const sinR = Math.sin(radians);
+                let maxTanAngle = -Infinity; // max elevation tangent seen so far
+                let boundaryLon = towerLon;
+                let boundaryLat = towerLat;
+                let blocked = false;
+
+                for (let step = 1; step <= totalSteps; step++) {
+                    const dist = step * STEP_M;
+                    const dLat = (dist * cosR) / 111320;
+                    const dLon = (dist * sinR) / (111320 * cosLat);
+                    const sampleLat = towerLat + dLat;
+                    const sampleLon = towerLon + dLon;
+
+                    const terrainEle = getElevationSync(sampleLon, sampleLat);
+                    // Tangent of elevation angle from observer to this point
+                    const tanAngle = (terrainEle - observerEle) / dist;
+
+                    if (tanAngle > maxTanAngle) {
+                        maxTanAngle = tanAngle;
+                        // If terrain rises ABOVE observer, this is a blocking ridge
+                        if (terrainEle > observerEle && !blocked) {
+                            blocked = true;
+                            boundaryLon = sampleLon;
+                            boundaryLat = sampleLat;
+                        }
+                        if (!blocked) {
+                            // Still visible — extend boundary
+                            boundaryLon = sampleLon;
+                            boundaryLat = sampleLat;
+                        }
+                    }
+                }
+
+                // If never blocked, boundary is at max range
+                if (!blocked) {
+                    const dist = maxRange;
+                    boundaryLon = towerLon + (dist * sinR) / (111320 * cosLat);
+                    boundaryLat = towerLat + (dist * cosR) / 111320;
+                }
+
+                boundaryPoints.push([boundaryLon, boundaryLat]);
+            }
+
+            // Close the polygon
+            boundaryPoints.push(boundaryPoints[0]);
+
+            return {
+                type: 'Feature',
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: [boundaryPoints],
+                },
+                properties: {},
+            };
+        }
+
+        // ——— UI STATE ———
+        let activeTower = null;
+        const loadingEl = document.getElementById('loading-indicator');
+        const towerInfoEl = document.getElementById('tower-info');
+        const maxRangeInput = document.getElementById('max-range');
+        const rangeValueEl = document.getElementById('range-value');
+        const rayCountInput = document.getElementById('ray-count');
+        const rayValueEl = document.getElementById('ray-value');
+
+        maxRangeInput.addEventListener('input', () => {
+            rangeValueEl.textContent = `${maxRangeInput.value} km`;
+        });
+        rayCountInput.addEventListener('input', () => {
+            rayValueEl.textContent = rayCountInput.value;
+        });
+
+        // ——— MAP LOAD ———
+        map.on('error', (e) => {
+            console.error('Map error:', e.error?.message || e);
+        });
+
+        map.on('load', async () => {
+          try {
+            // Load tower data — use embedded data directly
+            const towersData = TOWERS_DATA;
+            console.log('Tower data:', towersData.features.length, 'features');
+            document.getElementById('tower-info').innerHTML =
+                `Loading ${towersData.features.length} towers...`;
+
+            // Add tower source
+            map.addSource('towers', {
+                type: 'geojson',
+                data: towersData,
+            });
+
+            // Tower circle layer
+            map.addLayer({
+                id: 'towers-circle',
+                type: 'circle',
+                source: 'towers',
+                paint: {
+                    'circle-radius': [
+                        'interpolate', ['linear'], ['zoom'],
+                        5, 3,
+                        10, 7,
+                        15, 12,
+                    ],
+                    'circle-color': '#c0392b',
+                    'circle-stroke-color': '#fff',
+                    'circle-stroke-width': 2,
+                    'circle-opacity': 0.9,
+                },
+            });
+
+            // Tower labels
+            map.addLayer({
+                id: 'towers-labels',
+                type: 'symbol',
+                source: 'towers',
+                minzoom: 10,
+                layout: {
+                    'text-field': ['get', 'name'],
+                    'text-size': 11,
+                    'text-offset': [0, 1.5],
+                    'text-anchor': 'top',
+                    'text-max-width': 10,
+                },
+                paint: {
+                    'text-color': '#333',
+                    'text-halo-color': '#fff',
+                    'text-halo-width': 1.5,
+                },
+            });
+
+            // Viewshed polygon source (empty initially)
+            map.addSource('viewshed', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] },
+            });
+
+            map.addLayer({
+                id: 'viewshed-fill',
+                type: 'fill',
+                source: 'viewshed',
+                paint: {
+                    'fill-color': '#e74c3c',
+                    'fill-opacity': 0.15,
+                },
+            });
+
+            map.addLayer({
+                id: 'viewshed-outline',
+                type: 'line',
+                source: 'viewshed',
+                paint: {
+                    'line-color': '#c0392b',
+                    'line-width': 2,
+                    'line-opacity': 0.6,
+                },
+            });
+
+            // Enable terrain for 3D visualization (wrapped in try-catch)
+            try {
+                map.addSource('mapbox-dem', {
+                    type: 'raster-dem',
+                    url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+                    tileSize: 512,
+                    maxzoom: 14,
+                });
+                map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+
+                map.addLayer({
+                    id: 'sky',
+                    type: 'sky',
+                    paint: {
+                        'sky-type': 'atmosphere',
+                        'sky-atmosphere-sun': [0.0, 0.0],
+                        'sky-atmosphere-sun-intensity': 15,
+                    },
+                });
+            } catch (terrainErr) {
+                console.warn('Terrain setup failed (non-critical):', terrainErr);
+            }
+
+            console.log('Towers loaded successfully');
+            document.getElementById('tower-info').innerHTML =
+                `Click a tower to compute its viewshed.<br/><small style="color: #999;">${TOWERS_DATA.features.length} towers loaded.</small>`;
+
+            // Click handler
+            map.on('click', 'towers-circle', async (e) => {
+                const feature = e.features[0];
+                const props = feature.properties;
+                const [lon, lat] = feature.geometry.coordinates;
+
+                const name = props.name || 'Unknown';
+                const elevation = props.elevation_m ? parseFloat(props.elevation_m) : null;
+                const vpHeight = props.viewpoint_height_m ? parseFloat(props.viewpoint_height_m) : 15;
+                const maxRange = parseInt(maxRangeInput.value);
+                const numRays = parseInt(rayCountInput.value);
+
+                // Update info panel
+                towerInfoEl.innerHTML = `
+                    <div class="tower-name">${name}</div>
+                    <div class="stat"><span class="label">Elevation</span><span class="value">${elevation ? Math.round(elevation) + ' m' : 'Unknown'}</span></div>
+                    <div class="stat"><span class="label">Tower height</span><span class="value">${vpHeight} m</span></div>
+                    <div class="stat"><span class="label">Range</span><span class="value">${maxRange} km</span></div>
+                    <div class="stat"><span class="label">Status</span><span class="value" id="status-text">Computing...</span></div>
+                `;
+
+                // Show loading
+                loadingEl.classList.add('visible');
+
+                // Use terrain elevation if KML doesn't have it
+                let towerElevation = elevation;
+                if (towerElevation === null) {
+                    towerElevation = await getElevation(lon, lat);
+                }
+
+                // Compute viewshed (use requestAnimationFrame to let UI update)
+                await new Promise(r => setTimeout(r, 50));
+
+                const t0 = performance.now();
+                const viewshedPolygon = await computeViewshed(
+                    lon, lat, towerElevation, vpHeight, maxRange, numRays
+                );
+                const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+                // Update map
+                map.getSource('viewshed').setData({
+                    type: 'FeatureCollection',
+                    features: [viewshedPolygon],
+                });
+
+                // Update status
+                const statusEl = document.getElementById('status-text');
+                if (statusEl) statusEl.textContent = `Done (${elapsed}s)`;
+                loadingEl.classList.remove('visible');
+
+                // Fly to the tower
+                map.flyTo({
+                    center: [lon, lat],
+                    zoom: Math.max(map.getZoom(), 11),
+                    duration: 1500,
+                });
+            });
+
+            // Cursor style
+            map.on('mouseenter', 'towers-circle', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'towers-circle', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // Hover popup
+            const popup = new mapboxgl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                offset: 12,
+            });
+
+            map.on('mouseenter', 'towers-circle', (e) => {
+                const props = e.features[0].properties;
+                const ele = props.elevation_m ? `${Math.round(parseFloat(props.elevation_m))}m` : '?';
+                popup.setLngLat(e.features[0].geometry.coordinates)
+                    .setHTML(`<strong>${props.name}</strong><br/>Elevation: ${ele}`)
+                    .addTo(map);
+            });
+            map.on('mouseleave', 'towers-circle', () => {
+                popup.remove();
+            });
+
+          } catch (err) {
+            console.error('Error in map load callback:', err);
+            document.getElementById('tower-info').innerHTML =
+                `<span style="color:red">Error loading towers: ${err.message}</span>`;
+          }
+        });
+
+        } // end setupMap
+    </script>
+</body>
+</html>
