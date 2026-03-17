@@ -638,6 +638,7 @@
                     ${tipoEstrutura ? `<div class="stat"><span class="label">Structure</span><span class="value">${tipoEstrutura}</span></div>` : ''}
                     ${fonteEnergia ? `<div class="stat"><span class="label">Energy</span><span class="value">${fonteEnergia}</span></div>` : ''}
                     <div class="stat"><span class="label">Status</span><span class="value" id="status-text">Computing...</span></div>
+                    <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;color:#e8d5a3;text-decoration:none;font-size:13px;opacity:0.85;transition:opacity .2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">Take me here &#8599;</a>
                 `;
 
                 // Show loading
