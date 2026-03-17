@@ -85,3 +85,24 @@ The following 70 towers lack OSM data and have coordinates converted from the Ha
 | 46-04 | Viseu | Tondela | Guardão |
 | 46-08 | Viseu | São Pedro do Sul | Santinho das Moitas |
 | 68-01 | Évora | Estremoz | Glória |
+
+## Towers Found on OSM With No ICNF Data
+
+The following 15 towers were found on OpenStreetMap but have no matching ICNF registry entry. They lack distrito, concelho, freguesia, energy source, and network classification. Help identifying and documenting these towers is needed.
+
+| PV Code | OSM Name | Elevation |
+|---------|----------|-----------|
+| 51-02 | Posto de Vigia Vale Grande | 58 m |
+| P03 | Posto de Vigia Aire | 678 m |
+| M. ATALAIA | Moinho da Atalaia | 206 m |
+| 54-02 | Posto de Vigia Cabeço do Outeiro | 326 m |
+| S.OSSA-1 | Posto de Vigia Serra de Ossa 1 | 428 m |
+| P3 | Posto de Vigia Monteiros | 138 m |
+| 33-01 | Posto de Vigia Santinha | 1595 m |
+| 0-92 | Posto de Vigia São Lourenço | 772 m |
+| P1 | Posto de Vigia Mariares | 118 m |
+| VALONGO-2 | Posto de Vigia Santa Justa | 366 m |
+| P02 | Posto de Vigia Penedos Negros | 547 m |
+| 55-05 | Posto de Vigia Alcoentre | 149 m |
+| P2 | Posto de Vigia Valinhos | 182 m |
+| P01 | Posto de Vigia Vale de Ventos | 483 m |
