@@ -1,5 +1,9 @@
 # Firewatch Portugal
 
+**[Live Map](https://firewatch-portugal.vercel.app/)**
+
+After playing Firewatch, I kinda brewed a love for firewatch lookouts that still today beats in my heart.
+
 Portugal Fire Lookout Towers (Postos de Vigia) — Viewshed Analysis
 
 Interactive map showing 250 fire lookout towers across Portugal with viewshed computation capabilities. Uses Mapbox GL JS with terrain data to calculate line-of-sight visibility from each tower.

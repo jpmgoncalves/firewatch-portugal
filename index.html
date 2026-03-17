@@ -157,28 +157,25 @@
 
         #footer {
             position: absolute;
-            bottom: 8px;
-            right: 120px;
-            font-size: 11px;
-            color: #888;
+            bottom: 0;
+            left: 0;
+            right: 0;
             z-index: 10;
-            background: rgba(18, 18, 22, 0.85);
-            padding: 4px 10px;
-            border-radius: 6px;
-            backdrop-filter: blur(4px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 12px 20px;
+            background: linear-gradient(to top, rgba(10, 10, 15, 0.85) 0%, rgba(10, 10, 15, 0) 100%);
+            text-align: center;
+            pointer-events: none;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.45);
+            letter-spacing: 0.3px;
         }
         #footer a {
-            color: #aaa;
+            color: #f5c842;
             text-decoration: none;
+            pointer-events: auto;
         }
         #footer a:hover {
             text-decoration: underline;
-            color: #ddd;
-        }
-        #footer span {
-            margin: 0 6px;
-            color: #555;
         }
     </style>
 </head>
@@ -262,7 +259,7 @@
         // ——— MAP SETUP ———
         map = new mapboxgl.Map({
             container: 'map',
-            style: 'mapbox://styles/mapbox/dark-v11',
+            style: 'mapbox://styles/mapbox/outdoors-v12',
             center: [-8.0, 39.7],
             zoom: 7,
             pitch: 0,
@@ -476,53 +473,15 @@
 
         async function onMapLoad() {
           try {
-            // ——— STYLE: Hide roads, enhance forests/green areas ———
+            // Hide roads and related layers
             const layers = map.getStyle().layers;
             for (const layer of layers) {
-                // Hide all road, tunnel, bridge, and rail layers
                 if (/^(road|tunnel|bridge|turning|crosswalk|level-crossing|aeroway|ferry)/.test(layer.id)) {
                     map.setLayoutProperty(layer.id, 'visibility', 'none');
                 }
-                // Hide road labels and shields
                 if (/^(road-label|road-number|road-exit|road-intersection|path-pedestrian-label)/.test(layer.id)) {
                     map.setLayoutProperty(layer.id, 'visibility', 'none');
                 }
-            }
-
-            // Enhance landcover (forests, grass, etc.) for dark theme
-            if (map.getLayer('landcover')) {
-                map.setPaintProperty('landcover', 'fill-color', [
-                    'match', ['get', 'class'],
-                    'wood', '#1a4a1a',
-                    'scrub', '#1e3d1e',
-                    'grass', '#1e3a16',
-                    'crop', '#1a2e14',
-                    'snow', '#2a2a2e',
-                    '#1a1a1e'
-                ]);
-                map.setPaintProperty('landcover', 'fill-opacity', 0.8);
-            }
-
-            // Enhance national parks / protected areas
-            if (map.getLayer('national-park')) {
-                map.setPaintProperty('national-park', 'fill-color', '#2d6b2d');
-                map.setPaintProperty('national-park', 'fill-opacity', 0.4);
-            }
-
-            // Enhance landuse (parks, forests)
-            if (map.getLayer('landuse')) {
-                map.setPaintProperty('landuse', 'fill-color', [
-                    'match', ['get', 'class'],
-                    'park', '#1f4f1f',
-                    'airport', '#1a1a1e',
-                    'cemetery', '#1a1a1e',
-                    'glacier', '#2a2a2e',
-                    'hospital', '#1a1a1e',
-                    'pitch', '#1e3a1e',
-                    'sand', '#2a2518',
-                    'school', '#1a1a1e',
-                    '#1a1a1e'
-                ]);
             }
 
             // Load tower data — use embedded data directly
@@ -611,7 +570,26 @@
                     tileSize: 512,
                     maxzoom: 14,
                 });
-                map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+                map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.8 });
+
+                // Boost vector hillshade opacity for better altitude contrast
+                if (map.getLayer('hillshade')) {
+                    map.setPaintProperty('hillshade', 'fill-opacity', 0.6);
+                }
+
+                // Add raster DEM hillshade for finer altitude granularity
+                map.addLayer({
+                    id: 'dem-hillshade',
+                    type: 'hillshade',
+                    source: 'mapbox-dem',
+                    paint: {
+                        'hillshade-exaggeration': 0.5,
+                        'hillshade-shadow-color': '#1a1008',
+                        'hillshade-highlight-color': '#fdfdf5',
+                        'hillshade-accent-color': '#4a6741',
+                        'hillshade-illumination-direction': 315,
+                    },
+                }, 'towers-circle');
 
                 map.addLayer({
                     id: 'sky',
@@ -743,9 +721,7 @@
     </script>
 
     <div id="footer">
-        <a href="https://joaopmgoncalves.com/" target="_blank">Made by João Gonçalves</a>
-        <span>|</span>
-        <a href="https://github.com/jpmgoncalves/firewatch-portugal" target="_blank">Public Repo</a>
+        Made by <a href="https://joaopmgoncalves.com/" target="_blank">João Gonçalves</a> · <a href="https://github.com/jpmgoncalves/firewatch-portugal" target="_blank">Public repo</a>
     </div>
 </body>
 </html>
