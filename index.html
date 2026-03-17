@@ -477,7 +477,7 @@
             console.error('Map error:', e.error?.message || e);
         });
 
-        map.on('load', async () => {
+        async function onMapLoad() {
           try {
             // Load tower data — use embedded data directly
             const towersData = TOWERS_DATA;
@@ -673,7 +673,14 @@
             document.getElementById('tower-info').innerHTML =
                 `<span style="color:red">Error loading towers: ${err.message}</span>`;
           }
-        });
+        }
+
+        // Handle race condition: style may already be loaded by the time we register the handler
+        if (map.isStyleLoaded()) {
+            onMapLoad();
+        } else {
+            map.on('load', onMapLoad);
+        }
 
         } // end setupMap
     </script>
