@@ -170,6 +170,29 @@
             min-width: 40px;
             text-align: right;
         }
+        #footer {
+            position: absolute;
+            bottom: 8px;
+            right: 120px;
+            font-size: 11px;
+            color: #666;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 4px 10px;
+            border-radius: 6px;
+            backdrop-filter: blur(4px);
+        }
+        #footer a {
+            color: #444;
+            text-decoration: none;
+        }
+        #footer a:hover {
+            text-decoration: underline;
+        }
+        #footer span {
+            margin: 0 6px;
+            color: #ccc;
+        }
     </style>
 </head>
 <body>
@@ -189,11 +212,6 @@
             Max range
             <input type="range" id="max-range" min="5" max="40" value="20" step="1" />
             <span class="range-value" id="range-value">20 km</span>
-        </label>
-        <label>
-            Ray density
-            <input type="range" id="ray-count" min="180" max="720" value="360" step="36" />
-            <span class="range-value" id="ray-value">360</span>
         </label>
     </div>
 
@@ -470,14 +488,10 @@
         const towerInfoEl = document.getElementById('tower-info');
         const maxRangeInput = document.getElementById('max-range');
         const rangeValueEl = document.getElementById('range-value');
-        const rayCountInput = document.getElementById('ray-count');
-        const rayValueEl = document.getElementById('ray-value');
+        const RAY_COUNT = 360;
 
         maxRangeInput.addEventListener('input', () => {
             rangeValueEl.textContent = `${maxRangeInput.value} km`;
-        });
-        rayCountInput.addEventListener('input', () => {
-            rayValueEl.textContent = rayCountInput.value;
         });
 
         // ——— MAP LOAD ———
@@ -656,7 +670,7 @@
                 const distrito = props.distrito || '';
                 const concelho = props.concelho || '';
                 const maxRange = parseInt(maxRangeInput.value);
-                const numRays = parseInt(rayCountInput.value);
+                const numRays = RAY_COUNT;
 
                 // Update info panel
                 const locationParts = [distrito, concelho].filter(Boolean);
@@ -753,5 +767,11 @@
 
         } // end setupMap
     </script>
+
+    <div id="footer">
+        <a href="https://joaopmgoncalves.com/" target="_blank">Made by João Gonçalves</a>
+        <span>|</span>
+        <a href="https://github.com/jpmgoncalves/firewatch-portugal" target="_blank">Public Repo</a>
+    </div>
 </body>
 </html>
