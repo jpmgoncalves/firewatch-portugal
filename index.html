@@ -479,6 +479,55 @@
 
         async function onMapLoad() {
           try {
+            // ——— STYLE: Hide roads, enhance forests/green areas ———
+            const layers = map.getStyle().layers;
+            for (const layer of layers) {
+                // Hide all road, tunnel, bridge, and rail layers
+                if (/^(road|tunnel|bridge|turning|crosswalk|level-crossing|aeroway|ferry)/.test(layer.id)) {
+                    map.setLayoutProperty(layer.id, 'visibility', 'none');
+                }
+                // Hide road labels and shields
+                if (/^(road-label|road-number|road-exit|road-intersection|path-pedestrian-label)/.test(layer.id)) {
+                    map.setLayoutProperty(layer.id, 'visibility', 'none');
+                }
+            }
+
+            // Enhance landcover (forests, grass, etc.) with stronger green tones
+            if (map.getLayer('landcover')) {
+                map.setPaintProperty('landcover', 'fill-color', [
+                    'match', ['get', 'class'],
+                    'wood', '#6aad5f',
+                    'scrub', '#8aba7e',
+                    'grass', '#a3d194',
+                    'crop', '#d4e8c2',
+                    'snow', '#f0f0f0',
+                    '#e8e0d8'
+                ]);
+                map.setPaintProperty('landcover', 'fill-opacity', 0.7);
+            }
+
+            // Enhance national parks / protected areas
+            if (map.getLayer('national-park')) {
+                map.setPaintProperty('national-park', 'fill-color', '#4a8c3f');
+                map.setPaintProperty('national-park', 'fill-opacity', 0.35);
+            }
+
+            // Enhance landuse (parks, forests)
+            if (map.getLayer('landuse')) {
+                map.setPaintProperty('landuse', 'fill-color', [
+                    'match', ['get', 'class'],
+                    'park', '#7bc26a',
+                    'airport', '#e8e0d8',
+                    'cemetery', '#e8e0d8',
+                    'glacier', '#f0f0f0',
+                    'hospital', '#e8e0d8',
+                    'pitch', '#c8dbb0',
+                    'sand', '#f0e4d0',
+                    'school', '#e8e0d8',
+                    '#e8e0d8'
+                ]);
+            }
+
             // Load tower data — use embedded data directly
             const towersData = TOWERS_DATA;
             console.log('Tower data:', towersData.features.length, 'features');
