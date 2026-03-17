@@ -217,7 +217,7 @@
         let MAPBOX_TOKEN = '';
         let TERRAIN_TILE_URL = '';
         const TILE_SIZE = 512;
-        const TILE_ZOOM = 12;
+        const TILE_ZOOM = 13;
         let map;
 
         function initApp(token) {
@@ -370,7 +370,7 @@
         async function computeViewshed(towerLon, towerLat, towerElevation, viewpointHeight, maxRangeKm, numRays) {
             const observerEle = towerElevation + viewpointHeight;
             const maxRange = maxRangeKm * 1000; // meters
-            const STEP_M = 150; // sample every 150m along each ray
+            const STEP_M = 30; // sample every 30m along each ray
             const totalSteps = Math.ceil(maxRange / STEP_M);
             const cosLat = Math.cos(towerLat * Math.PI / 180);
             const boundaryPoints = [];
@@ -408,6 +408,7 @@
                 let boundaryLat = towerLat;
                 let blocked = false;
 
+                const MIN_BLOCK_DIST = 200; // Don't block within 200m (DEM noise near tower)
                 for (let step = 1; step <= totalSteps; step++) {
                     const dist = step * STEP_M;
                     const dLat = (dist * cosR) / 111320;
@@ -422,7 +423,7 @@
                     if (tanAngle > maxTanAngle) {
                         maxTanAngle = tanAngle;
                         // If terrain rises ABOVE observer, this is a blocking ridge
-                        if (terrainEle > observerEle && !blocked) {
+                        if (terrainEle > observerEle && !blocked && dist >= MIN_BLOCK_DIST) {
                             blocked = true;
                             boundaryLon = sampleLon;
                             boundaryLat = sampleLat;
@@ -617,7 +618,7 @@
                 const name = props.name || 'Unknown';
                 const codigoPv = props.codigo_pv || '';
                 const elevation = props.elevation_m ? parseFloat(props.elevation_m) : null;
-                const vpHeight = props.viewpoint_height_m ? parseFloat(props.viewpoint_height_m) : 15;
+                const vpHeight = props.viewpoint_height_m ? parseFloat(props.viewpoint_height_m) : 7;
                 const fonteEnergia = props.fonte_energia || '';
                 const tipoEstrutura = props.tipo_estrutura || '';
                 const distrito = props.distrito || '';
